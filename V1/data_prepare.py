@@ -6,6 +6,7 @@ from pathlib import Path
 import soundfile as sf
 from itertools import chain
 import numpy as np
+from math import ceil
 
 import torch
 import torch.nn as nn
@@ -164,11 +165,52 @@ class RawAudioDataset(Dataset):
         return self.audio_size_list
 
 
-def resample_feature_from_50_to_60(feature: torch.Tensor, ):
-    ...
 
 
+def resample_feature_from_50_to_60(feature: torch.Tensor):
+    """
+    对于长为 length 的 feature，先将 0 ~ length - 1 映射到 60 hz 的坐标上，查看哪些向量可以直接赋值；
+    然后剩下的不能赋值的向量，根据其周围四个向量进行插值得到：
+        1：0 0 2 3
+        7：5 6 8 9 (5 6 8 8)
 
+    feature: [N, H]
+    return: [ceil((N-1)*1.2) + 1, H]
+    """
+    assert len(feature.shape) == 2
+
+    length = len(feature)
+    directly_map_indices = [ceil( w *1.2) for w in range(length)]
+    interpolate_indices = []
+    idx = 0
+
+    mapped_length = ceil((length - 1) * 1.2)
+    while (int_idx := 1 + idx *6) < mapped_length:
+        interpolate_indices.append(int_idx)
+        idx += 1
+    if not hasattr(resample_feature_from_50_to_60, "InterpolateIndicesMap"):
+        resample_feature_from_50_to_60.InterpolateIndicesMap = {}
+    InterpolateIndicesMap = resample_feature_from_50_to_60.InterpolateIndicesMap
+
+    computed_indices = []
+    for int_idx in interpolate_indices:
+        try:
+            computed_indices.append(InterpolateIndicesMap[int_idx])
+        except KeyError:
+            InterpolateIndicesMap[int_idx] = [max(int_idx -2, 0), max(int_idx -1, 0), min(int_idx +1, mapped_length), min(int_idx +2, mapped_length)]
+            computed_indices.append(InterpolateIndicesMap[int_idx])
+        except Exception as e:
+            raise e
+    computed_indices = torch.LongTensor(computed_indices)
+
+    interpolated_feature = feature.new_zeros((mapped_length +1, feature.size(1)))
+    interpolated_feature[directly_map_indices] = feature
+
+    weights = torch.FloatTensor([1 /6, 1/ 3, 1 / 3, 1 / 6]).unsqueeze(0).unsqueeze(2)
+    computed_feature_value = (interpolated_feature[computed_indices] * weights).sum(dim=1)
+    interpolated_feature[interpolate_indices] = computed_feature_value
+
+    return interpolated_feature
 
 
 class StaticFeatureDataset(Dataset):
@@ -178,7 +220,6 @@ class StaticFeatureDataset(Dataset):
      如果 feature rate 和 label rate 不一致，会将其采样到和 label rate 一致； 
      因此如果提前对 feature 做了 resample，那么这里的 feature rate 也应该与 resample 后的 feature 保持一致；
     """
-
 
     def __init__(
         self,
@@ -190,13 +231,19 @@ class StaticFeatureDataset(Dataset):
         min_keep_feature_size: Optional[int] = None, 
     ):
 
-        self.audio_feature_path_list, self.audio_feature_size_list = load_sequence_data(manifest_or_list=static_audio_feature_manifest_or_list, 
+        self.audio_feature_path_list, self.audio_feature_size_list = load_sequence_data(manifest_or_list=static_audio_feature_manifest_or_list,
                                                                 max_keep_sample_size=max_keep_feature_size, min_keep_sample_size=min_keep_feature_size)
         self.ctrl_path_list, self.ctrl_size_list = load_sequence_data(manifest_or_list=ctrl_manifest_or_list)
 
+        self.need_resample = False
         if feature_rate is not None and label_rate is not None:
+            # TODO 这里我们先实验简单的做法，例如插值方法，默认要么提前使用 resample_feature_from_50_to_60 插值好，或者 feature rate 只能是 50；
+            if feature_rate != label_rate:
+                assert feature_rate == 50 and label_rate == 60
+                self.need_resample = True
+
             verify_label_lengths(audio_size_list=self.audio_feature_size_list, audio_path_list=self.audio_feature_path_list, ctrl_size_list=self.ctrl_size_list, 
-                                ctrl_path_list=self.ctrl_path_list, sample_rate=feature_rate, label_rate=label_rate, tol=0.1)
+                                 ctrl_path_list=self.ctrl_path_list, sample_rate=feature_rate, label_rate=label_rate, tol=0.1)
         
         self.static_audio_feature_manifest_or_list = static_audio_feature_manifest_or_list
         self.ctrl_manifest_or_list = ctrl_manifest_or_list
@@ -207,8 +254,9 @@ class StaticFeatureDataset(Dataset):
 
     def get_audio_feature(self, index):
         feature = torch.load(self.audio_feature_path_list[index])
-
-
+        if self.need_resample:
+            feature = resample_feature_from_50_to_60(feature)
+        return feature
 
     def get_ctrl_label(self, index):
         return torch.load(self.ctrl_path_list[index])
@@ -219,6 +267,11 @@ class StaticFeatureDataset(Dataset):
     def __getitem__(self, index):
         audio_feature = self.get_audio_feature(index)
         ctrl_label = self.get_ctrl_label(index)
+        if len(audio_feature) < len(ctrl_label):
+            audio_feature = torch.cat([audio_feature, audio_feature[[-1]].repeat(len(ctrl_label)-len(audio_feature), 1)])
+        elif len(audio_feature) > len(ctrl_label):
+            audio_feature = audio_feature[:len(ctrl_label)]
+
         return {"idx": index, "audio_feature": audio_feature, "ctrl_label": ctrl_label}
 
     def num_tokens(self, index) -> int:
@@ -527,7 +580,7 @@ def pad_discrete_label_fn(
     label_list = [torch.LongTensor(t[s: s + frame_size]) for t, s in zip(label_list, frame_start_list)]
     lengths = torch.LongTensor([len(t) for t in label_list])
     ntokens = lengths.sum().items()
-    collated_labels = label_list[0].new((len(label_list), frame_size)).fill_(pad_token_id)
+    collated_labels = label_list[0].new_full((len(label_list), frame_size), pad_token_id)
     for i, label in enumerate(label_list):
         collated_labels[i, :len(label)] = label
     return collated_labels, lengths, ntokens
@@ -582,7 +635,7 @@ def directly_pad_feature_fn(
     feature_list = [w[s: s + feature_size] for w, s in zip(feature_list, feature_start_list)]
     lengths = torch.LongTensor([len(t) for t in feature_list])
     ntokens = lengths.sum().items()
-    collated_features = feature_list[0].new((len(feature_list), feature_size, feature_list[0].size(-1))).fill_(0)
+    collated_features = feature_list[0].new_zeros((len(feature_list), feature_size, feature_list[0].size(-1)))
     for i, feature in enumerate(feature_list):
         collated_features[i, :len(feature)] = feature
     return collated_features, lengths, ntokens

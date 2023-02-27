@@ -41,7 +41,7 @@ logger = logging.getLogger(__file__)
 
 sys.path.append("V1/")
 sys.path.append("..")
-from data_prepare import AudioOnlyDataset, AudioWav2Vec2Collater, ConstantTokenBatchSampler
+from data_prepare import AudioOnlyDataset, AudioWav2Vec2Collater, ConstantTokenBatchSampler, resample_feature_from_50_to_60
 from utils import _process_bar, check_gpu_available, move_data_to_device
 
 
@@ -247,19 +247,28 @@ def wav2vec2_extract():
     )
 
 
+def resample_feature(feature_manifest_path, manifest_save_path, new_feature_save_dir):
+    """
+    TODO 这里先直接使用 resample_feature_from_50_to_60；
+    """
 
+    manifest_save_path = Path(manifest_save_path)
+    manifest_save_path.parent.mkdir(exist_ok=True, parents=True)
+    new_feature_save_dir = Path(new_feature_save_dir)
+    new_feature_save_dir.mkdir(exist_ok=True, parents=True)
 
-
-
-"""
-这里我们先写得简单一点，直接将插值方式写死，50 -> 60，每 5 个向量插值一次，不足 5 个时如果大于等于 3，那么插值；
-"""
-def resample_feature(feature_manifest_path, manifest_save_path, new_feature_save_dir, tgt_feature_rate):
-    ...
-
-
-
-
+    manifest_f = open(manifest_save_path, "w")
+    with open(feature_manifest_path, "r") as f:
+        for line in f:
+            feature_path, feature_size = line.rstrip().split("\t")
+            feature = torch.load(feature_path)
+            resampled_feature = resample_feature_from_50_to_60(feature)
+            feature_path = Path(feature_path)
+            new_save_name = new_feature_save_dir.joinpath(Path(feature_path).name)
+            torch.save(resampled_feature, new_save_name)
+            new_line = str(new_save_name) + "\t" + str(len(resampled_feature))
+            print(new_line, file=manifest_f)
+    manifest_f.close()
 
 
 if __name__ == "__main__":
