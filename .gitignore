@@ -3,10 +3,20 @@
 
 # 注意这里需要递归地去写；
 !V1/
+!V1/**
 !V1/*
+
+V1/cache_dir
+
+!scripts/
+!scripts/*
 
 !README.md
 !.gitignore
+
+
+
+**/__pycache__
 
 
 
