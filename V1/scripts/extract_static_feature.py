@@ -249,6 +249,11 @@ def wav2vec2_extract():
 
 
 
+
+
+"""
+这里我们先写得简单一点，直接将插值方式写死，50 -> 60，每 5 个向量插值一次，不足 5 个时如果大于等于 3，那么插值；
+"""
 def resample_feature(feature_manifest_path, manifest_save_path, new_feature_save_dir, tgt_feature_rate):
     ...
 
