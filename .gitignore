@@ -14,7 +14,9 @@ V1/cache_dir
 !README.md
 !.gitignore
 
-
+!config/
+!config/**
+!config/*
 
 **/__pycache__
 

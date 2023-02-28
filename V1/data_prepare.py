@@ -7,7 +7,7 @@ import soundfile as sf
 from itertools import chain
 import numpy as np
 from math import ceil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 import torch.nn as nn
@@ -215,14 +215,14 @@ class StaticFeatureDatasetConfig:
     min_keep_feature_size: Optional[int] = None
     
     # 在 2007 控制器向量中对应的坐标；
-    lumi05_mouth_ctrl_indices = [
+    lumi05_mouth_ctrl_indices: List[int] = field(default_factory=lambda: [
         513, 514, 522, 532, 541, 559, 567, 568, 577, 586, 613, 622, 631, 640, 649, 666, 667, 676, 685, 730, 739, 
         748, 757, 766, 775, 784, 802, 811, 820, 829, 838, 847, 874, 883, 892, 901, 910, 919, 928, 937, 982, 1000, 
         1027, 1036, 1045, 1054, 1063, 1072, 1081, 1089, 1090, 1099,
-    ] 
-    lumi05_eye_ctrl_indices = [
+    ])
+    lumi05_eye_ctrl_indices: List[int] = field(default_factory=lambda: [
         1, 9, 18, 27, 37, 46, 55, 145, 154, 163, 190, 199, 486, 487,
-    ]
+    ])
 
 
 

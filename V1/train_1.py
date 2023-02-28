@@ -24,6 +24,9 @@ from models import (
     Model1
 )
 
+from helper_fns import check_config_validity, parse_config_from_yaml
+
+
 
 
 @dataclass
@@ -55,6 +58,7 @@ class TrainingConfig:
 
 
 
+
 def train():
 
 
@@ -65,9 +69,13 @@ def train():
     4. train loop;
     """
 
+    config_dict = parse_config_from_yaml("/remote-home/xgyang/E2EGeneration/V1/config/v1.yaml", StaticFeatureDatasetConfig, Model1Config, TrainingConfig)
 
+    static_feature_dataset_config = config_dict['StaticFeatureDatasetConfig']
+    model1_config = config_dict['Model1Config']
+    training_config = config_dict['TrainingConfig']
 
-
+    a = 1
 
 
 

@@ -1,0 +1,16 @@
+
+
+StaticFeatureDatasetConfig:
+  static_audio_feature_manifest_or_list: ""
+  ctrl_manifest_or_list: ""
+  feature_rate: 60
+  label_rate: 60
+  max_keep_feature_size:
+  min_keep_feature_size:
+  lumi05_eye_ctrl_indices: [0]
+
+
+Model1Config:
+  n_lumi_mouth_channels: [1, 2]
+  n_lumi_eye_channels: 14
+  hidden_size: 384  # hidden size
