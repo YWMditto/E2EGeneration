@@ -4,6 +4,8 @@ import logging
 from pathlib import Path
 import soundfile as sf
 
+import torch
+
 from utils import multi_process_fn, _process_bar, SearchFilePath
 
 logger = logging.getLogger(__file__)
@@ -56,6 +58,33 @@ def prepare_wav_manifest(path_dirs, save_path):
         frames = sf.info(_path).frames
         line = str(_path) + "\t" + str(frames)
         print(line, file=save_f)
+
+    save_f.close()
+
+
+def prepare_static_feature_manifest(path_dirs, save_path):
+    if isinstance(path_dirs, (str, Path)):
+        path_dirs = [path_dirs]
+
+    search_model = SearchFilePath()
+    all_path_list = search_model.find_all_file_paths(
+        data_dirs=path_dirs,
+        pattern=".+\.pt",
+        n_proc=64,
+        depth=1
+    )
+
+    save_path = Path(save_path)
+    save_path.parent.mkdir(exist_ok=True, parents=True)
+    save_f = open(save_path, 'w') 
+
+    with _process_bar("prepare static feature manifest", total=len(all_path_list), pid=0) as update:
+        for _path in all_path_list:
+            feature = torch.load(_path)
+            line = str(_path) + "\t" + str(len(feature))
+            print(line, file=save_f)
+
+            update(1)
 
     save_f.close()
 
@@ -123,12 +152,12 @@ if __name__ == "__main__":
     #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/wav.txt"
     # )
 
-    resample_audios(
-        wav_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav.txt",
-        manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav_16000.txt",
-        audio_save_dir="/data/lipsync/xgyang/e2e_data/resampled_yingrao_dataproc_crop_audios",
-        tgt_sample_rate=16000
-    )
+    # resample_audios(
+    #     wav_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav.txt",
+    #     manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav_16000.txt",
+    #     audio_save_dir="/data/lipsync/xgyang/e2e_data/resampled_yingrao_dataproc_crop_audios",
+    #     tgt_sample_rate=16000
+    # )
 
     # prepare_both_manifest(
     #     audio_path_dirs="/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_audios",
@@ -136,6 +165,21 @@ if __name__ == "__main__":
     #     audio_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav.txt",
     #     ctrl_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl.txt"
     # )
+
+    # prepare_static_feature_manifest(
+    #     path_dirs="/data/lipsync/xgyang/e2e_data/static_feature/hubert_50",
+    #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_hubert_50.txt"
+    # )
+
+    prepare_static_feature_manifest(
+        path_dirs="/data/lipsync/xgyang/e2e_data/static_feature/wavlm_50",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_50.txt"
+    )
+
+    prepare_static_feature_manifest(
+        path_dirs="/data/lipsync/xgyang/e2e_data/static_feature/wav2vec2_50",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_50.txt"
+    )
 
 
 

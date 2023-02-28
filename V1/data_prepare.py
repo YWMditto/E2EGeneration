@@ -188,19 +188,10 @@ def resample_feature_from_50_to_60(feature: torch.Tensor):
     while (int_idx := 1 + idx *6) < mapped_length:
         interpolate_indices.append(int_idx)
         idx += 1
-    if not hasattr(resample_feature_from_50_to_60, "InterpolateIndicesMap"):
-        resample_feature_from_50_to_60.InterpolateIndicesMap = {}
-    InterpolateIndicesMap = resample_feature_from_50_to_60.InterpolateIndicesMap
 
     computed_indices = []
     for int_idx in interpolate_indices:
-        try:
-            computed_indices.append(InterpolateIndicesMap[int_idx])
-        except KeyError:
-            InterpolateIndicesMap[int_idx] = [max(int_idx -2, 0), max(int_idx -1, 0), min(int_idx +1, mapped_length), min(int_idx +2, mapped_length)]
-            computed_indices.append(InterpolateIndicesMap[int_idx])
-        except Exception as e:
-            raise e
+        computed_indices.append([max(int_idx -2, 0), max(int_idx -1, 0), min(int_idx +1, mapped_length), min(int_idx +2, mapped_length)])
     computed_indices = torch.LongTensor(computed_indices)
 
     interpolated_feature = feature.new_zeros((mapped_length +1, feature.size(1)))

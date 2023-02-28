@@ -273,14 +273,30 @@ def resample_feature(feature_manifest_path, manifest_save_path, new_feature_save
 
 if __name__ == "__main__":
 
-    set_start_method("spawn", force=True)
-    set_sharing_strategy('file_system')
-
+    # set_start_method("spawn", force=True)
+    # set_sharing_strategy('file_system')
 
     # hubert_extract()
     # wavlm_extract()
-    wav2vec2_extract()
+    # wav2vec2_extract()
 
+    # resample_feature(
+    #     feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_hubert_50.txt",
+    #     manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_hubert_60.txt",
+    #     new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/hubert_60"
+    # )
+
+    resample_feature(
+        feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_50.txt",
+        manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_60.txt",
+        new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/wavlm_60"
+    )
+
+    resample_feature(
+        feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_50.txt",
+        manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_60.txt",
+        new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/wav2vec2_60"
+    )
 
 
 
