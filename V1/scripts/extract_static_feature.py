@@ -42,7 +42,7 @@ logger = logging.getLogger(__file__)
 sys.path.append("V1/")
 sys.path.append("..")
 from data_prepare import AudioOnlyDataset, AudioWav2Vec2Collater, ConstantTokenBatchSampler, resample_feature_from_50_to_60
-from utils import _process_bar, check_gpu_available, move_data_to_device
+from utils import _process_bar, check_gpu_available, move_data_to_device, SearchFilePath
 
 
 @dataclass
@@ -269,6 +269,42 @@ def resample_feature(feature_manifest_path, manifest_save_path, new_feature_save
             new_line = str(new_save_name) + "\t" + str(len(resampled_feature))
             print(new_line, file=manifest_f)
     manifest_f.close()
+
+
+# def extract_lumi05_real_ctrl_indices(ctrl_path_dirs, map_save_path, new_ctrl_save_dir):
+#     from data_prepare import StaticFeatureConfig
+
+#     if isinstance(ctrl_path_dirs, (str, Path)):
+#         ctrl_path_dirs = [ctrl_path_dirs]
+
+#     search_model = SearchFilePath()
+#     ctrl_path_list = search_model.find_all_file_paths(
+#         data_dirs=ctrl_path_dirs,
+#         pattern=".+\.pt",
+#         n_proc=64,
+#         depth=1
+#     )
+
+#     new_ctrl_save_dir = Path(new_ctrl_save_dir)
+#     new_ctrl_save_dir.mkdir(exist_ok=True, parents=True)
+
+#     Path(map_save_path).mkdir(exist_ok=True, parents=True)
+#     map_save_f = open(map_save_path, 'w')
+
+#     mouth_indices = StaticFeatureConfig.lumi05_mouth_ctrl_indices
+#     eye_indices = StaticFeatureConfig.lumi05_eye_ctrl_indices
+#     with _process_bar("extract lumi05 real ctrl indices", total=len(ctrl_path_list)) as update:
+#         for path in ctrl_path_list:
+#             ctrl_label = torch.load(path)
+#             cur_mouth_ctrl = ctrl_label[:, mouth_indices]
+#             cur_eye_ctrl = ctrl_label[:, eye_indices]
+
+
+
+
+
+
+
 
 
 if __name__ == "__main__":
