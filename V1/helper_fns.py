@@ -1,6 +1,6 @@
 
 
-from dataclasses import dataclass, field, fields, Field, MISSING, InitVar
+from dataclasses import dataclass, field, fields, Field, MISSING, InitVar, is_dataclass
 import yaml
 from pathlib import Path
 
@@ -38,7 +38,13 @@ def parse_config_from_yaml(config, *DataclassConfig):
     ins_config_dict = {}
     for dataclass_config in DataclassConfig:
         dataclass_name = dataclass_config.__name__
-        cur_keys = set(w.name for w in fields(dataclass_config))
+        cur_keys = set()
+        sub_dataclasses = {}
+        for _field in fields(dataclass_config):
+            _field_name = _field.name
+            cur_keys.add(_field_name)
+            if is_dataclass(_field.type):
+                sub_dataclasses[_field_name] = _field.type
         for past_name, past_keys in all_keys.items():
             if key := cur_keys.intersection(past_keys):
                 raise RuntimeError(f"{dataclass_name} has key: {key} repetition with {past_name}.")
@@ -47,6 +53,9 @@ def parse_config_from_yaml(config, *DataclassConfig):
         key_words = config.get(dataclass_name, {})
         if non_keys := set(key_words).difference(cur_keys):
             raise RuntimeError(f"{non_keys} of {dataclass_name} in yaml do not exist.")
+        for _sub_dataclass_key, _sub_dataclass_value in sub_dataclasses.items():
+            if _sub_dataclass_key in key_words:
+                key_words[_sub_dataclass_key] = parse_config_from_yaml(dict([(_sub_dataclass_value.__name__, key_words[_sub_dataclass_key])]), _sub_dataclass_value)[_sub_dataclass_value.__name__]
         ins_config_dict[dataclass_name] = dataclass_config(**key_words)
 
     for config_name, config_dict in config.items():

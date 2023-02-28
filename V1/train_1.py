@@ -28,7 +28,6 @@ from helper_fns import check_config_validity, parse_config_from_yaml
 
 
 
-
 @dataclass
 class DDPConfig:
     find_unused_parameters: bool = False

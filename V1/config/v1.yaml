@@ -14,3 +14,7 @@ Model1Config:
   n_lumi_mouth_channels: [1, 2]
   n_lumi_eye_channels: 14
   hidden_size: 384  # hidden size
+
+
+TrainingConfig:
+  gradient_accumulation_step: 1
