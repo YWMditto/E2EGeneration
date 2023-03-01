@@ -7,6 +7,7 @@
 !V1/*
 
 V1/cache_dir
+V1/lightning_logs
 
 !scripts/
 !scripts/*

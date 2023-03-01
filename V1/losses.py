@@ -54,4 +54,8 @@ class WingLoss(nn.Module):
         loss1 = self.omega * torch.log(1 + delta_y1 / self.epsilon)
         C = self.omega - self.omega * math.log(1 + self.omega / self.epsilon)
         loss2 = delta_y2 - C
-        return (loss1.sum() + loss2.sum()) / (len(loss1) + len(loss2))
+
+        record_loss = (loss1.sum() + loss2.sum()).item()
+        record_num = (len(loss1) + len(loss2))
+
+        return (loss1.sum() + loss2.sum()) / (len(loss1) + len(loss2)), record_loss, record_num

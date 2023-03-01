@@ -149,19 +149,19 @@ class Model1(nn.Module):
         # mouth loss
         mouth_ctrl_pred = self.mouth_head(decoder_hidden_states)
         mouth_ctrl_labels = batch["mouth_ctrl_labels"]
-        mouth_wing_loss = self.wing_loss_fn(mouth_ctrl_pred, mouth_ctrl_labels, padding_mask)
+        mouth_wing_loss, mouth_wing_record_loss, mouth_wing_record_num  = self.wing_loss_fn(mouth_ctrl_pred, mouth_ctrl_labels, padding_mask)
         
         # ete loss
         eye_ctrl_pred = self.eye_head(decoder_hidden_states)
         eye_ctrl_labels = batch["eye_ctrl_labels"]
-        eye_wing_loss = self.wing_loss_fn(eye_ctrl_pred, eye_ctrl_labels, padding_mask)
+        eye_wing_loss, eye_wing_record_loss, eye_wing_record_num = self.wing_loss_fn(eye_ctrl_pred, eye_ctrl_labels, padding_mask)
 
         loss = mouth_wing_loss + eye_wing_loss
 
         return {
             "loss": loss,
-            "mouth_wing_loss": mouth_wing_loss,
-            "eye_wing_loss": eye_wing_loss
+            "mouth_wing_loss_record": (mouth_wing_record_loss, mouth_wing_record_num),
+            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_loss)
         }
         
 

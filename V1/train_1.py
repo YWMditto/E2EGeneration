@@ -3,9 +3,18 @@
 """
 TODO 实现对于 Model1 的训练，之后应当从中抽取出共用的 train_utils；
 """
-
-
 import os
+import sys
+import logging
+
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    level=os.environ.get("LOGLEVEL", "INFO").upper(),
+    stream=sys.stdout,
+)
+logger = logging.getLogger(__name__)
+
 from dataclasses import dataclass, field
 from typing import List, Optional
 import argparse
@@ -32,16 +41,14 @@ from helper_fns import parse_config_from_yaml
 from pl_modules import Model1PL
 
 
-@dataclass
-class DDPConfig:
-    devices: List[int] = field(default_factory=lambda: [0, 1])
-    find_unused_parameters: bool = False
-
-
 
 @dataclass
 class TrainingConfig:
+
+    use_constant_batch_sampler: bool = False
     one_batch_total_tokens: int = 6000
+
+    batch_size: int = 8
     
     seed: int = 0
     shuffle: bool = True
@@ -54,17 +61,16 @@ class TrainingConfig:
     eye_head_lr: float = 5e-5
     weight_decay: float = 1e-5
     epoch_milestones: List[int] = field(default_factory=lambda: [1000])
-    gamme: float = 0.5
+    gamma: float = 0.5
 
     warmup_epochs: int = 8
     n_epochs: int = 2000
 
     evaluate_every: int = -4  # TODO
     gradient_accumulation_step: int = 1
-    distributed_training: bool = field(default=False)
-    device: int = 0
+    devices: List[int] = field(default_factory=lambda: [0])
 
-    ddp_config: DDPConfig = DDPConfig()
+    use_wandb: bool = False
 
     loss_config: LossConfig = LossConfig()
 
@@ -103,33 +109,31 @@ def train():
         random_crop=train_static_feature_dataset_config.random_crop
     )
 
-    train_batch_sampler = ConstantTokenBatchSampler(
-        size_list=train_static_feature_dataset.size_list(),
-        one_batch_total_tokens=training_config.one_batch_total_tokens,
-        shuffle=training_config.shuffle,
-        num_buckets=5,
-        seed=training_config.seed,
-        dataset_name="static feature dataset",
-        num_replicas=1 if not training_config.distributed_training else len(training_config.ddp_config.devices),
-        rank=int(os.environ.get("LOCAL_RANK", 0)),
-        drop_last=True
-    )
-
-    train_dataloader = DataLoader(dataset=train_static_feature_dataset, batch_sampler=train_batch_sampler, collate_fn=train_collate_fn)
+    if training_config.use_constant_batch_sampler:
+        train_batch_sampler = ConstantTokenBatchSampler(
+            size_list=train_static_feature_dataset.size_list(),
+            one_batch_total_tokens=training_config.one_batch_total_tokens,
+            shuffle=training_config.shuffle,
+            num_buckets=5,
+            seed=training_config.seed,
+            dataset_name="static feature dataset",
+            num_replicas=len(training_config.devices),
+            rank=int(os.environ.get("LOCAL_RANK", 0)),
+            drop_last=True
+        )
+        train_dataloader = DataLoader(dataset=train_static_feature_dataset, batch_sampler=train_batch_sampler, collate_fn=train_collate_fn)
+    else:
+        train_dataloader = DataLoader(dataset=train_static_feature_dataset, batch_size=training_config.batch_size, shuffle=training_config.shuffle, collate_fn=train_collate_fn)
 
     model1_pl = Model1PL(model1_config, training_config, train_static_feature_dataset_config)
     
-    if training_config.distributed_training:
-        trainer = pl.Trainer(
-            accelerator="gpu",
-            devices=training_config.device,
-            max_epochs=training_config.n_epochs
-        )
-    else:
-        trainer = pl.Trainer(
-            max_epochs=training_config.n_epochs
-        )
-    
+
+    trainer = pl.Trainer(
+        accelerator="gpu",
+        devices=training_config.devices,
+        max_epochs=training_config.n_epochs
+    )
+
     trainer.fit(
         model=model1_pl,
         train_dataloaders=train_dataloader

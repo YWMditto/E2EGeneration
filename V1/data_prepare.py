@@ -617,13 +617,13 @@ def random_pad_feature_fn(
     feature_size_list = [len(s) for s in feature_list]
 
     if pad_feature:
-        feature_size = max(min(feature_size_list), max_feature_size)
+        feature_size = min(max(feature_size_list), max_feature_size)
     else:
         feature_size = min(min(feature_size_list), max_feature_size)
 
     hidden_size = feature_list[0].size(-1)
     collated_features = feature_list[0].new_zeros(len(feature_list), feature_size, hidden_size)
-    padding_mask = torch.BoolTensor((len(feature_list), feature_size)).fill_(True)
+    padding_mask = torch.BoolTensor(size=(len(feature_list), feature_size)).fill_(True)
     feature_start_list = [0 for _ in range(len(collated_features))]
     for i, feature in enumerate(feature_list):
         diff = len(feature) - feature_size
@@ -655,7 +655,7 @@ def directly_pad_feature_fn(
     """
     feature_list = [w[s: s + feature_size] for w, s in zip(feature_list, feature_start_list)]
     lengths = torch.LongTensor([len(t) for t in feature_list])
-    ntokens = lengths.sum().items()
+    ntokens = lengths.sum().item()
     collated_features = feature_list[0].new_zeros((len(feature_list), feature_size, feature_list[0].size(-1)))
     for i, feature in enumerate(feature_list):
         collated_features[i, :len(feature)] = feature
@@ -824,8 +824,8 @@ class StaticFeatureCollater:
         self.random_crop = random_crop
 
         logger.info(f"StaticFeatureCollater is configured as: \n"
-                    f"\max_feature_size: {max_feature_size},"
-                    f"\pad_feature: {pad_feature},"
+                    f"\tmax_feature_size: {max_feature_size},"
+                    f"\tpad_feature: {pad_feature},"
                     f"\trandom_crop: {random_crop},")
 
 
