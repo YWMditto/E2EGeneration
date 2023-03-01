@@ -1,18 +1,34 @@
 
 import math
+from dataclasses import dataclass
+
 
 import torch
 import torch.nn as nn
 
 
+@dataclass
+class WingLossConfig:
+    omega: float = 10.
+    epsilon: float = 2.0
+    emoji_weight: float = 1.0
+
+
+@dataclass
+class LossConfig:
+    wing_loss_config: WingLossConfig = WingLossConfig()
+    
+
+
+
 class WingLoss(nn.Module):
-    def __init__(self, omega, epsilon, emoji_weights=None):
+    def __init__(self, omega, epsilon, emoji_weight=None):
         super(WingLoss, self).__init__()
         self.omega = omega
         self.epsilon = epsilon
-        self.emoji_weights = emoji_weights
-        if emoji_weights is not None:
-            self.emoji_weights = torch.tensor(emoji_weights, dtype=torch.float32).cuda()
+        self.emoji_weight = emoji_weight
+        if emoji_weight is not None:
+            self.emoji_weight = torch.tensor(emoji_weight, dtype=torch.float32).cuda()
 
     def forward(self, pred, target, mask=None):
         """
@@ -23,8 +39,8 @@ class WingLoss(nn.Module):
         y = target
         y_hat = pred
         delta_y = (y - y_hat).abs()
-        if self.emoji_weights is not None:
-            delta_y = delta_y * self.emoji_weights
+        if self.emoji_weight is not None:
+            delta_y = delta_y * self.emoji_weight
         delta_y1 = delta_y[delta_y < self.omega]
         delta_y2 = delta_y[delta_y >= self.omega]
 

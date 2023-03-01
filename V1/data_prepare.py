@@ -1,5 +1,5 @@
 
-
+import sys
 import logging
 from typing import Optional, List, Union
 from pathlib import Path
@@ -207,8 +207,9 @@ def resample_feature_from_50_to_60(feature: torch.Tensor):
 
 @dataclass
 class StaticFeatureDatasetConfig:
-    static_audio_feature_manifest_or_list: str
-    ctrl_manifest_or_list: str
+    # 为了能够直接初始化这些 conifg，所有的值如果确实没有默认值全部设置成 None；
+    static_audio_feature_manifest_or_list: Optional[str] = None
+    ctrl_manifest_or_list: Optional[str] = None
     feature_rate: Optional[int] = None
     label_rate: Optional[int] = None
     max_keep_feature_size: Optional[int] = None
@@ -223,6 +224,11 @@ class StaticFeatureDatasetConfig:
     lumi05_eye_ctrl_indices: List[int] = field(default_factory=lambda: [
         1, 9, 18, 27, 37, 46, 55, 145, 154, 163, 190, 199, 486, 487,
     ])
+
+    # collate config
+    max_feature_size: Optional[int] = None
+    pad_feature: bool = True
+    random_crop: bool = False
 
 
 
@@ -257,7 +263,7 @@ class StaticFeatureDataset(Dataset):
                 self.need_resample = True
 
             verify_label_lengths(audio_size_list=self.audio_feature_size_list, audio_path_list=self.audio_feature_path_list, ctrl_size_list=self.ctrl_size_list, 
-                                 ctrl_path_list=self.ctrl_path_list, sample_rate=feature_rate, label_rate=label_rate, tol=0.1)
+                                 ctrl_path_list=self.ctrl_path_list, sample_rate=feature_rate, label_rate=label_rate, tol=1)  # TODO 这里有个问题就是部分控制器标签的长度看起来和实际的音频长度不对等；
         
         self.static_audio_feature_manifest_or_list = static_audio_feature_manifest_or_list
         self.ctrl_manifest_or_list = ctrl_manifest_or_list
@@ -377,11 +383,11 @@ class ConstantTokenBatchSampler:
         seed: int = 0,
         dataset_name: str = 'tmp',
         num_replicas: int = 1,
-        rank: int = 1,
+        rank: int = 0,
         drop_last: bool = True,
         **kwargs
     ):
-        logger.info(f"Use ``HubertBatchSampler``, current dataset is {dataset_name}.")
+        logger.info(f"Use ``ConstantTokenBatchSampler``, current dataset is {dataset_name}.")
 
         self.size_list = size_list
         self.one_batch_total_tokens = one_batch_total_tokens
@@ -401,8 +407,9 @@ class ConstantTokenBatchSampler:
             filter_size = one_batch_total_tokens
 
         self.size_list_with_indices, longer_num = self.filter_by_size(self.size_list_with_indices, filter_size, has_sorted=True)
-        logger.warning(f"Dataset {dataset_name} has {longer_num} samples whose lengths are longer than "
-                       f"one_batch_total_tokens: {one_batch_total_tokens} or filter_size: {filter_size}.")
+        if longer_num > 0:
+            logger.warning(f"Dataset {dataset_name} has {longer_num} samples whose lengths are longer than "
+                        f"one_batch_total_tokens: {one_batch_total_tokens} or filter_size: {filter_size}.")
 
         # 提前分桶；
         if self.shuffle and num_buckets is not None and num_buckets > 1:
@@ -809,6 +816,9 @@ class StaticFeatureCollater:
         pad_feature: bool,
         random_crop: bool,
     ):
+        if max_feature_size is None:
+            max_feature_size = sys.maxsize
+
         self.max_feature_size = max_feature_size
         self.pad_feature = pad_feature
         self.random_crop = random_crop

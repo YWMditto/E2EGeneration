@@ -90,7 +90,9 @@ class Model1(nn.Module):
         self.mouth_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_mouth_channels)
         self.eye_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_eye_channels)
 
-        self.wing_loss_fn = WingLoss(omega=training_config.omega, epsilon=training_config.epsilon, emoji_weight=training_config.emoji_weight)
+        self.loss_config = training_config.loss_config
+        self.wing_loss_config = self.loss_config.wing_loss_config
+        self.wing_loss_fn = WingLoss(omega=self.wing_loss_config.omega, epsilon=self.wing_loss_config.epsilon, emoji_weight=self.wing_loss_config.emoji_weight)
 
 
     def forward(self, batch):

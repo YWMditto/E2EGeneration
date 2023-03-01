@@ -1,11 +1,13 @@
 
+import logging
+
 
 from dataclasses import dataclass, field, fields, Field, MISSING, InitVar, is_dataclass
 import yaml
 from pathlib import Path
 
 
-
+logger = logging.getLogger(__file__)
 
 
 
@@ -30,12 +32,18 @@ def parse_config_from_yaml(config, *DataclassConfig):
 
     TODO 加上类型检查，检查 yaml 中每一个值是否能够和 dataclass config 中设置的类型对应上；
     """
+    ins_config_dict = {}
+    if config is None:
+        logger.warning("yaml config file is None, notice whether this is what you want.")
+        for dataclass_config in DataclassConfig:
+            ins_config_dict[dataclass_config.__name__] = dataclass_config()
+        return ins_config_dict
+
     if isinstance(config, (str, Path)):
         with open(config, "r") as f:
             config = yaml.load(f, yaml.FullLoader)
 
     all_keys = {}
-    ins_config_dict = {}
     for dataclass_config in DataclassConfig:
         dataclass_name = dataclass_config.__name__
         cur_keys = set()
