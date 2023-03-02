@@ -11,7 +11,10 @@ try:
 except:
     ...
 
-from models import Model1, Model1Config
+import logging
+logger = logging.getLogger(__file__)
+
+from .models import Model1, Model1Config
 from data_prepare import StaticFeatureDatasetConfig
 
 
@@ -26,8 +29,8 @@ class Model1PL(pl.LightningModule):
         self.static_feature_dataset_config = static_feature_dataset_config
 
         self.model1 = Model1(model1_config, training_config)
-        self.lumi05_mouth_ctrl_indices = static_feature_dataset_config.lumi05_mouth_ctrl_indices
-        self.lumi05_eye_ctrl_indices = static_feature_dataset_config.lumi05_eye_ctrl_indices
+        self.lumi05_mouth_ctrl_indices = static_feature_dataset_config.lumi05_mouth_without_R_ctrl_indices
+        self.lumi05_eye_ctrl_indices = static_feature_dataset_config.lumi05_eye_without_R_ctrl_indices
 
         self.use_wandb = training_config.use_wandb
 
@@ -43,7 +46,6 @@ class Model1PL(pl.LightningModule):
         
         loss_dict.pop("loss")
         loss_dict["global_step"] = float(self.global_step)
-        loss_dict["loss"] = loss.item()
 
         mouth_wing_loss_record = loss_dict.pop("mouth_wing_loss_record")
         loss_dict["mouth_wing_loss"] = mouth_wing_loss_record[0] / mouth_wing_loss_record[1]
@@ -51,17 +53,19 @@ class Model1PL(pl.LightningModule):
         loss_dict["eye_wing_loss"] = eye_wing_loss_record[0] / eye_wing_loss_record[1]
         
         if self.use_wandb:
+            loss_dict["loss"] = loss.item()
             wandb.log(loss_dict)
         else:
-            self.log_dict(loss_dict)
+            self.log_dict(loss_dict, prog_bar=True)
 
-        self.log("bsz", float(len(collated_ctrl_labels)), prog_bar=True)
-        self.log("feature_len", float(collated_ctrl_labels.size(1)), prog_bar=True)
+        # self.log("bsz", float(len(collated_ctrl_labels)), prog_bar=True)
+        # self.log("feature_len", float(collated_ctrl_labels.size(1)), prog_bar=True)
 
+        # TODO 实现一下记录 optimizer lr 的功能；
         return loss
     
     def validation_step(self, batch, batch_idx):
-        collated_ctrl_labels = batch["collated_ctrl_labels"]
+        collated_ctrl_labels = batch["ctrl_labels"]
         mouth_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices]
         eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_eye_ctrl_indices]
         batch["mouth_ctrl_labels"] = mouth_ctrl_labels
@@ -78,11 +82,12 @@ class Model1PL(pl.LightningModule):
         mouth_wing_validate_loss = sum(mouth_wing_losses) / (sum(mouth_wing_loss_num))
         eye_wing_validate_loss = sum(eye_wing_losses) / (sum(eye_wing_loss_num))
 
-        loss_dict = {"mouth_wing_validate_loss": mouth_wing_validate_loss, "eye_wing_validate_loss": eye_wing_validate_loss}
+        loss_dict = {"validate_loss": mouth_wing_validate_loss + eye_wing_validate_loss, "mouth_wing_validate_loss": mouth_wing_validate_loss, "eye_wing_validate_loss": eye_wing_validate_loss}
         if self.use_wandb:
             wandb.log(loss_dict)
         else:
-            self.log_dict(loss_dict, prog_bar=True)
+            self.log_dict(loss_dict, prog_bar=False)
+        logger.info(f"validate: mouth wing / eye wing validate loss: {mouth_wing_validate_loss} / {eye_wing_validate_loss}.")
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -117,16 +122,24 @@ class Model1PL(pl.LightningModule):
             weight_decay=self.training_config.weight_decay
         )
 
-        lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        lr_scheduler = [
+            torch.optim.lr_scheduler.MultiStepLR(
+                optimizer=optimizer,
+                milestones=self.training_config.epoch_milestones,
+                gamma=self.training_config.gamma,
+                last_epoch=self.current_epoch-1  # TODO 断点重训的行为需要测试； 
+            )
+        ]
+        warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
             optimizer=optimizer,
-            milestones=self.training_config.epoch_milestones,
-            gamma=self.training_config.gamma,
-
-            # TODO 完成断点重训后在这里添加 last_epoch；
+            lr_lambda=lambda epoch: max(epoch / self.training_config.warmup_epochs, self.training_config.min_lr) ,
+            last_epoch=self.current_epoch-1
         )
-        return [optimizer], [lr_scheduler]
+        lr_scheduler.append(warmup_scheduler)
+
+        return [optimizer], lr_scheduler
 
 
-
+    # TODO 在实现更复杂的 config 设置后，实现 on_save_checkpoint 方法来保存训练过程当中使用的 dataclass config，现在不需要；        
 
 

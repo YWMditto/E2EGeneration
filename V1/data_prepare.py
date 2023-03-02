@@ -216,13 +216,33 @@ class StaticFeatureDatasetConfig:
     min_keep_feature_size: Optional[int] = None
     
     # 在 2007 控制器向量中对应的坐标；
-    lumi05_mouth_ctrl_indices: List[int] = field(default_factory=lambda: [
+    lumi05_mouth_without_R_ctrl_indices: List[int] = field(default_factory=lambda: [
         513, 514, 522, 532, 541, 559, 567, 568, 577, 586, 613, 622, 631, 640, 649, 666, 667, 676, 685, 730, 739, 
         748, 757, 766, 775, 784, 802, 811, 820, 829, 838, 847, 874, 883, 892, 901, 910, 919, 928, 937, 982, 1000, 
         1027, 1036, 1045, 1054, 1063, 1072, 1081, 1089, 1090, 1099,
     ])
-    lumi05_eye_ctrl_indices: List[int] = field(default_factory=lambda: [
+    lumi05_eye_without_R_ctrl_indices: List[int] = field(default_factory=lambda: [
         1, 9, 18, 27, 37, 46, 55, 145, 154, 163, 190, 199, 486, 487,
+    ])
+
+    lumi05_mouth_L_ctrl_indices: List[int] = field(default_factory=lambda: [
+        613, 622, 631, 640, 649, 666, 667, 676, 685, 730, 739, 
+        748, 757, 766, 775, 784, 802, 811, 820, 829, 838, 847, 874, 883, 892, 901, 910, 919, 928, 937, 982, 1000, 
+        1027, 1036, 1045, 1054, 1063, 1072, 1081, 1089, 1090, 1099,
+    ])
+
+    lumi05_eye_L_ctrl_indices: List[int] = field(default_factory=lambda: [
+        1, 9, 18, 27, 37, 46, 55, 145, 154, 163, 190, 199
+    ])
+
+    lumi05_mouth_R_ctrl_indices: List[int] = field(default_factory=lambda: [
+        1108, 1117, 1126, 1135, 1144, 1161, 1162, 1171, 1180, 1225, 1234, 1243, 1252, 1261, 1270, 1279, 1297, 1306, 
+        1315, 1324, 1333, 1342, 1369, 1378, 1387, 1396, 1405, 1414, 1423, 1432, 1477, 1495, 1522, 1531, 1540, 1549, 
+        1558, 1567, 1576, 1584, 1585, 1594,
+    ])
+
+    lumi05_eye_R_ctrl_indices: List[int] = field(default_factory=lambda: [
+        73, 81, 90, 99, 109, 118, 127, 208, 217, 226, 253, 262,
     ])
 
     # collate config

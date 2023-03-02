@@ -1,13 +1,17 @@
+import sys
+sys.path.append(".")
+sys.path.append("..")
 
 from pathlib import Path
 
 import torch
 import numpy as np
 
+from V1.scripts.utils import SearchFilePath, _process_bar
 
 
 
-def transform_pt2txt(path_or_list, save_path):
+def transform_pt2npy(path_or_list, save_path):
 
     if isinstance(path_or_list, (str, Path)):
         path_or_list = [path_or_list]
@@ -23,16 +27,57 @@ def transform_pt2txt(path_or_list, save_path):
     
 
 
-if __name__ == "__main__":
-    transform_pt2txt(
-        [
-            "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/daodao_000056-neutral.pt",
-            "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/sad_000032-sad-little.pt",
-            "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/surprise_000199-surprise-little.pt",
-            "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/biaobei_001663-neutral.pt",
-        ],
-        "/data/lipsync/xgyang/E2EGeneration/tmp_dir/maya_generation"
+def transform_pt2npy_dir(path_dir_or_list, save_path):
+
+    if isinstance(path_dir_or_list, (str, Path)):
+        path_dir_or_list = [path_dir_or_list]
+
+    search_model = SearchFilePath()
+    all_path_list = search_model.find_all_file_paths(
+        data_dirs=path_dir_or_list,
+        pattern=".+\.pt",
+        n_proc=64,
+        depth=1
     )
+
+    save_path = Path(save_path)
+    save_path.mkdir(exist_ok=True, parents=True)
+
+    with _process_bar("transform pt2npy", total=len(all_path_list)) as update:
+        for _path in all_path_list:
+            _path = Path(_path)
+            _data = torch.load(_path)
+            _data = _data.numpy()
+            np.save(save_path.joinpath(_path.stem), _data)
+
+            update(1)
+
+
+
+
+def pull_music_to_local(ctrl_pt_path, music_dirs, save_dir):
+    ...
+
+
+
+
+if __name__ == "__main__":
+    # transform_pt2npy(
+    #     [
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/daodao_000056-neutral.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/sad_000032-sad-little.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/surprise_000199-surprise-little.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/biaobei_001663-neutral.pt",
+    #     ],
+    #     "/data/lipsync/xgyang/E2EGeneration/tmp_dir/maya_generation"
+    # )
+
+    transform_pt2npy_dir(
+        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=21-step=17556-validate_loss=0.60",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=21-step=17556-validate_loss=0.60_npy"
+    )
+
+
 
 
 

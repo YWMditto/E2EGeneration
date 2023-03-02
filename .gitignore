@@ -8,6 +8,8 @@
 
 V1/cache_dir
 V1/lightning_logs
+V1/checkpoint_dir
+V1/tmp_dir/
 
 !scripts/
 !scripts/*

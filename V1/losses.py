@@ -22,13 +22,13 @@ class LossConfig:
 
 
 class WingLoss(nn.Module):
-    def __init__(self, omega, epsilon, emoji_weight=None):
+    def __init__(self, omega, epsilon, emoji_weight=None, device=None):
         super(WingLoss, self).__init__()
         self.omega = omega
         self.epsilon = epsilon
         self.emoji_weight = emoji_weight
-        if emoji_weight is not None:
-            self.emoji_weight = torch.tensor(emoji_weight, dtype=torch.float32).cuda()
+        # if emoji_weight is not None:
+            # self.emoji_weight = torch.tensor(emoji_weight, dtype=torch.float32).to(device)
 
     def forward(self, pred, target, mask=None):
         """

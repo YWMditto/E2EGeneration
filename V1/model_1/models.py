@@ -5,7 +5,7 @@ from typing import Any
 
 import torch.nn as nn
 
-from modules import EEGTransformer
+from .modules import EEGTransformer
 from losses import WingLoss
 
 
@@ -161,14 +161,24 @@ class Model1(nn.Module):
         return {
             "loss": loss,
             "mouth_wing_loss_record": (mouth_wing_record_loss, mouth_wing_record_num),
-            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_loss)
+            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_num)
         }
         
 
+    # 这里对应 evaluate_1.py，即实际上为直接生成使用，因此不写成 evaluate_step;
+    def inference_step(self, batch):
+        # 虽然默认在调用时是一次一个样本输入，但是这里还是默认接受并且返回 batch 的形式，因此实际上的输入和输出形式基本上还是和 train_step 一样的；
 
+        model_output = self(batch)
+        decoder_hidden_states = model_output.decoder_hidden_states
 
+        mouth_ctrl_pred = self.mouth_head(decoder_hidden_states)
+        eye_ctrl_pred = self.eye_head(decoder_hidden_states)
 
-
+        return {
+            "mouth_ctrl_pred": mouth_ctrl_pred,
+            "eye_ctrl_pred": eye_ctrl_pred
+        }
 
 
 
