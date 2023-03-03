@@ -9,7 +9,7 @@ import torch.nn as nn
 
 @dataclass
 class WingLossConfig:
-    omega: float = 10.
+    omega: float = 1.
     epsilon: float = 2.0
     emoji_weight: float = 1.0
 
@@ -18,8 +18,6 @@ class WingLossConfig:
 class LossConfig:
     wing_loss_config: WingLossConfig = WingLossConfig()
     
-
-
 
 class WingLoss(nn.Module):
     def __init__(self, omega, epsilon, emoji_weight=None, device=None):

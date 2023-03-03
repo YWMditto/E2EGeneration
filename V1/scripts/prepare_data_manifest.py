@@ -293,17 +293,16 @@ if __name__ == "__main__":
     #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_50.txt"
     # )
 
-    # prepare_static_feature_both_manifest(
-    #     feature_path_dirs="/data/lipsync/xgyang/e2e_data/static_feature/hubert_60",
-    #     ctrl_path_dirs="/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05",
-    #     feature_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60.txt",
-    #     ctrl_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl.txt"
-    # )
-
+    prepare_static_feature_both_manifest(
+        feature_path_dirs="/data/lipsync/xgyang/e2e_data/static_feature/hubert_60",
+        ctrl_path_dirs="/data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels",
+        feature_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60.txt",
+        ctrl_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_normalized_extracted_ctrl.txt"
+    )
 
     split_validate_static_feature(
         feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60.txt", 
-        ctrl_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl.txt", 
+        ctrl_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_normalized_extracted_ctrl.txt", 
         save_dir="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir", 
         validate_p=30
     )

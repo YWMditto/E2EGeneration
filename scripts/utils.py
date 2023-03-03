@@ -64,21 +64,31 @@ def pull_music_to_local(ctrl_pt_path, music_dirs, save_dir):
 if __name__ == "__main__":
     # transform_pt2npy(
     #     [
-    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/daodao_000056-neutral.pt",
-    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/sad_000032-sad-little.pt",
-    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/surprise_000199-surprise-little.pt",
-    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/biaobei_001663-neutral.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/afraid_000005-afraid-great.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/biaobei_003066-neutral.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/cute_000001-cute.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/daodao_000014-neutral.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/happy_000022-happy-great.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/sad_000072-sad-little.pt",
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/surprise_000128-surprise-great.pt",
     #     ],
     #     "/data/lipsync/xgyang/E2EGeneration/tmp_dir/maya_generation"
     # )
 
+    # transform_pt2npy_dir(
+    #     path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/only_left/epoch=21-step=17556-validate_loss=0.60",
+    #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/only_left/epoch=21-step=17556-validate_loss=0.60_npy"
+    # )
+
+    # transform_pt2npy_dir(
+    #     path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/cur_eege/tmp_dir/output/checkpoint_e0020_val1.1691/inference",
+    #     save_path="/data/lipsync/xgyang/E2EGeneration/tmp_dir/cur_eege"
+    # )
+
     transform_pt2npy_dir(
-        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=21-step=17556-validate_loss=0.60",
-        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=21-step=17556-validate_loss=0.60_npy"
+        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/new_loss/epoch=4-step=3990-validate_loss=0.03",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/new_loss/epoch=4-step=3990-validate_loss=0.03_npy"
     )
-
-
-
 
 
 

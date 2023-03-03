@@ -29,16 +29,48 @@ class Model1PL(pl.LightningModule):
         self.static_feature_dataset_config = static_feature_dataset_config
 
         self.model1 = Model1(model1_config, training_config)
-        self.lumi05_mouth_ctrl_indices = static_feature_dataset_config.lumi05_mouth_without_R_ctrl_indices
-        self.lumi05_eye_ctrl_indices = static_feature_dataset_config.lumi05_eye_without_R_ctrl_indices
+        # self.lumi05_mouth_ctrl_indices = static_feature_dataset_config.lumi05_mouth_without_R_ctrl_indices
+        # self.lumi05_eye_ctrl_indices = static_feature_dataset_config.lumi05_eye_without_R_ctrl_indices
+        self.lumi05_mouth_ctrl_indices_num = len(static_feature_dataset_config.lumi05_mouth_without_R_ctrl_indices)
 
         self.use_wandb = training_config.use_wandb
 
+    # # past
+    # def training_step(self, batch, batch_idx):
+    #     collated_ctrl_labels = batch["ctrl_labels"]
+    #     mouth_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices]
+    #     eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_eye_ctrl_indices]
+    #     batch["mouth_ctrl_labels"] = mouth_ctrl_labels
+    #     batch["eye_ctrl_labels"] = eye_ctrl_labels
+    #     loss_dict = self.model1.train_step(batch)
+    #     loss = loss_dict["loss"]
+        
+    #     loss_dict.pop("loss")
+    #     loss_dict["global_step"] = float(self.global_step)
 
+    #     mouth_wing_loss_record = loss_dict.pop("mouth_wing_loss_record")
+    #     loss_dict["mouth_wing_loss"] = mouth_wing_loss_record[0] / mouth_wing_loss_record[1]
+    #     eye_wing_loss_record = loss_dict.pop("eye_wing_loss_record")
+    #     loss_dict["eye_wing_loss"] = eye_wing_loss_record[0] / eye_wing_loss_record[1]
+        
+    #     if self.use_wandb:
+    #         loss_dict["loss"] = loss.item()
+    #         wandb.log(loss_dict)
+    #     else:
+    #         self.log_dict(loss_dict, prog_bar=True)
+
+    #     # self.log("bsz", float(len(collated_ctrl_labels)), prog_bar=True)
+    #     # self.log("feature_len", float(collated_ctrl_labels.size(1)), prog_bar=True)
+
+    #     # TODO 实现一下记录 optimizer lr 的功能；
+    #     return loss
+
+
+    # 使用 normalized_extracted_ctrl_labels 的数据；
     def training_step(self, batch, batch_idx):
         collated_ctrl_labels = batch["ctrl_labels"]
-        mouth_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices]
-        eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_eye_ctrl_indices]
+        mouth_ctrl_labels = collated_ctrl_labels[..., :self.lumi05_mouth_ctrl_indices_num]
+        eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices_num:]
         batch["mouth_ctrl_labels"] = mouth_ctrl_labels
         batch["eye_ctrl_labels"] = eye_ctrl_labels
         loss_dict = self.model1.train_step(batch)
@@ -64,10 +96,26 @@ class Model1PL(pl.LightningModule):
         # TODO 实现一下记录 optimizer lr 的功能；
         return loss
     
+    def on_after_backward(self) -> None:
+        torch.nn.utils.clip_grad_norm_(self.model1.mouth_head.parameters(), 1.0)#self.training_config.gradient_clip_val)
+        torch.nn.utils.clip_grad_norm_(self.model1.eye_head.parameters(), 1.0)#self.training_config.gradient_clip_val)
+
+    # # past
+    # def validation_step(self, batch, batch_idx):
+    #     collated_ctrl_labels = batch["ctrl_labels"]
+    #     mouth_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices]
+    #     eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_eye_ctrl_indices]
+    #     batch["mouth_ctrl_labels"] = mouth_ctrl_labels
+    #     batch["eye_ctrl_labels"] = eye_ctrl_labels
+    #     loss_dict = self.model1.train_step(batch)
+    #     mouth_wing_loss_record = loss_dict["mouth_wing_loss_record"]
+    #     eye_wing_loss_record = loss_dict["eye_wing_loss_record"]
+    #     return [mouth_wing_loss_record, eye_wing_loss_record]
+
     def validation_step(self, batch, batch_idx):
         collated_ctrl_labels = batch["ctrl_labels"]
-        mouth_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices]
-        eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_eye_ctrl_indices]
+        mouth_ctrl_labels = collated_ctrl_labels[..., :self.lumi05_mouth_ctrl_indices_num]
+        eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices_num:]
         batch["mouth_ctrl_labels"] = mouth_ctrl_labels
         batch["eye_ctrl_labels"] = eye_ctrl_labels
         loss_dict = self.model1.train_step(batch)
@@ -130,12 +178,12 @@ class Model1PL(pl.LightningModule):
                 last_epoch=self.current_epoch-1  # TODO 断点重训的行为需要测试； 
             )
         ]
-        warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
-            optimizer=optimizer,
-            lr_lambda=lambda epoch: max(epoch / self.training_config.warmup_epochs, self.training_config.min_lr) ,
-            last_epoch=self.current_epoch-1
-        )
-        lr_scheduler.append(warmup_scheduler)
+        # warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
+        #     optimizer=optimizer,
+        #     lr_lambda=lambda epoch: max(epoch / self.training_config.warmup_epochs, self.training_config.min_lr) ,
+        #     last_epoch=self.current_epoch-1
+        # )
+        # lr_scheduler.append(warmup_scheduler)
 
         return [optimizer], lr_scheduler
 

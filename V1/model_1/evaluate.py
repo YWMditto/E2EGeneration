@@ -97,10 +97,9 @@ def evaluate():
                 audio_feature = audio_feature.unsqueeze(0)
                 padding_mask = torch.BoolTensor(size=audio_feature.shape[:2]).fill_(True)
 
-                origin_ctrl_label = sample["ctrl_label"]
-                ctrl_label = origin_ctrl_label.unsqueeze(0)
-                mouth_ctrl_labels = ctrl_label[..., lumi05_mouth_without_R_ctrl_indices]
-                eye_ctrl_labels = ctrl_label[..., lumi05_eye_without_R_ctrl_indices]
+                # ctrl_label = origin_ctrl_label.unsqueeze(0)
+                # mouth_ctrl_labels = ctrl_label[..., lumi05_mouth_without_R_ctrl_indices]
+                # eye_ctrl_labels = ctrl_label[..., lumi05_eye_without_R_ctrl_indices]
                 
                 collated_batch = {
                     "idx": torch.LongTensor([idx]).to(device),
@@ -108,8 +107,8 @@ def evaluate():
                         "audio_features": audio_feature.to(device),
                         "padding_mask": padding_mask.to(device),
                     },
-                    "mouth_ctrl_labels": mouth_ctrl_labels.to(device),
-                    "eye_ctrl_labels": eye_ctrl_labels.to(device)
+                    # "mouth_ctrl_labels": mouth_ctrl_labels.to(device),
+                    # "eye_ctrl_labels": eye_ctrl_labels.to(device)
                 }
 
                 output_dict = model.inference_step(collated_batch)
@@ -118,6 +117,8 @@ def evaluate():
                 mouth_ctrl_pred = mouth_ctrl_pred.cpu().squeeze(0)
                 eye_ctrl_pred = eye_ctrl_pred.cpu().squeeze(0)
 
+                origin_ctrl_label = sample["ctrl_label"]
+                
                 origin_ctrl_label[..., lumi05_mouth_without_R_ctrl_indices] = mouth_ctrl_pred
                 origin_ctrl_label[..., lumi05_eye_without_R_ctrl_indices] = eye_ctrl_pred
 

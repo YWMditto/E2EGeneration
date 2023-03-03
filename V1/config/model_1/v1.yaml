@@ -3,23 +3,25 @@
 UsedDatasetConfig:
   train_dataset_config:
     static_audio_feature_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60_train.txt"
-    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl_train.txt"
+    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_normalized_extracted_ctrl_train.txt"
     feature_rate: 60
     label_rate: 60
     max_keep_feature_size:
     min_keep_feature_size:
   validate_dataset_config:
     static_audio_feature_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60_validate.txt"
-    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl_validate.txt"
+    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_normalized_extracted_ctrl_validate.txt"
     feature_rate: 60
     label_rate: 60
     max_keep_feature_size:
     min_keep_feature_size:
 
 TrainingConfig:
+  gradient_clip_val:
+  devices: [4]
   checkpoint_config:
     save_checkpoint: True
-    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1"
+    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/v1"
     checkpoint_sub_name: "{epoch}-{step}-{validate_loss:.2f}"
     monitor: "validate_loss"
     save_last: True
@@ -30,4 +32,5 @@ TrainingConfig:
     every_n_train_steps: 
     save_on_train_epoch_end: False
     
-
+Model1Config:
+  pre_lnorm: True

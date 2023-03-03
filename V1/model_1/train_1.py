@@ -87,11 +87,11 @@ class TrainingConfig:
     min_lr: float = 1e-5  # TODO 实现控制所有 lr scheduler，现在只控制 LambdaLR；
 
     weight_decay: float = 1e-5
-    epoch_milestones: List[int] = field(default_factory=lambda: [750, 1500])
+    epoch_milestones: List[int] = field(default_factory=lambda: [12, 40, 70])
     gamma: float = 0.5
 
-    warmup_epochs: int = 40
-    n_epochs: int = 2000
+    warmup_epochs: int = 8
+    n_epochs: int = 100
 
     val_check_interval: Optional[int] = None
     check_val_every_n_epoch: int = 1
