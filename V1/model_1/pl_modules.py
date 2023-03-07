@@ -137,35 +137,12 @@ class Model1PL(pl.LightningModule):
             self.log_dict(loss_dict, prog_bar=False)
         logger.info(f"validate: mouth wing / eye wing validate loss: {mouth_wing_validate_loss} / {eye_wing_validate_loss}.")
 
+    def on_before_optimizer_step(self, optimizer, optimizer_idx: int) -> None:
+        a = 1
+
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            params=[
-                {
-                    "params": self.model1.encoder.parameters(),
-                    "lr": self.training_config.encoder_lr,
-                    "weight_decay": self.training_config.weight_decay
-                },
-                {
-                    "params": self.model1.decoder.parameters(),
-                    "lr": self.training_config.decoder_lr,
-                    "weight_decay": self.training_config.weight_decay
-                },
-                {
-                    "params": self.model1.pre_proj.parameters(),
-                    "lr": self.training_config.pre_proj_lr,
-                    "weight_decay": self.training_config.weight_decay
-                },
-                {
-                    "params": self.model1.mouth_head.parameters(),
-                    "lr": self.training_config.mouth_head_lr,
-                    "weight_decay": self.training_config.weight_decay
-                },
-                {
-                    "params": self.model1.eye_head.parameters(),
-                    "lr": self.training_config.eye_head_lr,
-                    "weight_decay": self.training_config.weight_decay
-                },
-            ],
+            params=self.model1.parameters(),
             lr=self.training_config.base_lr,
             weight_decay=self.training_config.weight_decay
         )

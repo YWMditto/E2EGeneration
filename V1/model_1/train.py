@@ -30,7 +30,10 @@ from data_prepare import (
     StaticFeatureDatasetConfig,
     StaticFeatureDataset,
     StaticFeatureCollater,
-    ConstantTokenBatchSampler
+    ConstantTokenBatchSampler,
+    PhnDataset,
+    CombinedFeatureDataset,
+    static_feature_phn_post_proces_fn
 )
 
 from model_1 import (
@@ -62,6 +65,18 @@ class CheckpointConfig:
     save_on_train_epoch_end: Optional[bool] = False
 
 
+# 将这一 config 写在这里是为了支持便捷地插入和删除这一组件；之后可能会分散到 model_config 和 data_config 中；
+@dataclass
+class PhnEmbeddingConfig:
+    add_phn: bool = False
+    train_phn_manifest_path: Optional[str] = None
+    validate_phn_manifest_path: Optional[str] = None
+    phn_num: Optional[int] = None
+    phn_padding_idx: Optional[int] = None
+    phn_directly_pad: bool = True
+    phn_flatten_pad: bool = True
+
+
 @dataclass
 class TrainingConfig:
 
@@ -78,7 +93,7 @@ class TrainingConfig:
     seed: int = 0
     shuffle: bool = True
 
-    base_lr: float = 1e-4
+    base_lr: float = 5e-4
     pre_proj_lr: float = 5e-4
     encoder_lr: float = 5e-4  # 用户在配置 encoder optim params 的时候应该使用 pipeline config；
     decoder_lr: float = 5e-4
@@ -107,6 +122,9 @@ class TrainingConfig:
     loss_config: LossConfig = LossConfig()
     checkpoint_config: CheckpointConfig = CheckpointConfig()
 
+    phn_embedding_config: PhnEmbeddingConfig = PhnEmbeddingConfig()
+
+
 
 @dataclass
 class UsedDatasetConfig:
@@ -130,6 +148,7 @@ def train():
     validate_static_feature_dataset_config: StaticFeatureDatasetConfig = used_dataset_config.validate_dataset_config
     model1_config: Model1Config = config_dict['Model1Config']
     training_config: TrainingConfig = config_dict['TrainingConfig']
+    phn_embedding_config = training_config.phn_embedding_config
 
     for key, value in config_dict.items():
         logger.info(f"{key}:\n{value}")
@@ -144,11 +163,18 @@ def train():
         max_keep_feature_size=train_static_feature_dataset_config.max_keep_feature_size,
         min_keep_feature_size=train_static_feature_dataset_config.min_keep_feature_size
     )
+    if phn_embedding_config.add_phn:
+        train_phn_dataset = PhnDataset(phn_manifest_path=phn_embedding_config.train_phn_manifest_path)
+        train_static_feature_dataset = CombinedFeatureDataset(train_static_feature_dataset, train_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
 
     train_collate_fn = StaticFeatureCollater(
         max_feature_size=train_static_feature_dataset_config.max_feature_size,
         pad_feature=train_static_feature_dataset_config.pad_feature,
-        random_crop=train_static_feature_dataset_config.random_crop
+        random_crop=train_static_feature_dataset_config.random_crop,
+
+        phn_directly_pad=phn_embedding_config.phn_directly_pad,
+        phn_flatten_pad=phn_embedding_config.phn_flatten_pad,
+        phn_padding_idx=phn_embedding_config.phn_padding_idx
     )
 
     if training_config.use_constant_batch_sampler:
@@ -176,6 +202,9 @@ def train():
         max_keep_feature_size=validate_static_feature_dataset_config.max_keep_feature_size,
         min_keep_feature_size=validate_static_feature_dataset_config.min_keep_feature_size
     )
+    if phn_embedding_config.add_phn:
+        validate_phn_dataset = PhnDataset(phn_manifest_path=phn_embedding_config.validate_phn_manifest_path)
+        validate_static_feature_dataset = CombinedFeatureDataset(validate_static_feature_dataset, validate_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
     validate_dataloader = DataLoader(dataset=validate_static_feature_dataset, batch_size=training_config.batch_size, shuffle=False, collate_fn=train_collate_fn, num_workers=training_config.num_workers)
 
     model1_pl = Model1PL(model1_config, training_config, train_static_feature_dataset_config)

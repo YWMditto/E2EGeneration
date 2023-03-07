@@ -19,10 +19,13 @@ UsedDatasetConfig:
 TrainingConfig:
   # weight_decay: 0.
   gradient_clip_val:
-  devices: [4]
+  devices: [0]
+  loss_config:
+    wing_loss_config:
+      omega: 10
   checkpoint_config:
     save_checkpoint: True
-    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/v1"
+    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/v3"
     checkpoint_sub_name: "{epoch}-{step}-{validate_loss:.4f}"
     monitor: "validate_loss"
     save_last: True

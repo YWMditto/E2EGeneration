@@ -17,10 +17,11 @@ from model_1 import (
 from data_prepare import (
     StaticFeatureDataset,
     StaticFeatureDatasetConfig,
-    StaticFeatureCollater
+    StaticFeatureCollater,
+    norm_decode
 )
 
-from train_1 import (
+from V1.model_1.train import (
     TrainingConfig, 
     UsedDatasetConfig,
     parse_config_from_yaml
@@ -39,6 +40,7 @@ def evaluate():
     parser.add_argument("--pl_ckpt_path")
     parser.add_argument("--config_path")
     parser.add_argument("--evaluate_config")
+    parser.add_argument("--lumi_template_path")
     parser.add_argument("--save_dir")
     parser.add_argument("--device", type=eval, default=0)
 
@@ -67,7 +69,7 @@ def evaluate():
     model.eval()
 
     evaluate_config_dict = parse_config_from_yaml(args.evaluate_config, StaticFeatureDatasetConfig)
-    evaluate_static_feature_dataset_config = evaluate_config_dict["StaticFeatureDatasetConfig"]
+    evaluate_static_feature_dataset_config: StaticFeatureDatasetConfig = evaluate_config_dict["StaticFeatureDatasetConfig"]
     evaluate_static_feature_dataset = StaticFeatureDataset(
         static_audio_feature_manifest_or_list=evaluate_static_feature_dataset_config.static_audio_feature_manifest_or_list,
         ctrl_manifest_or_list=evaluate_static_feature_dataset_config.ctrl_manifest_or_list,
@@ -81,6 +83,9 @@ def evaluate():
     save_dir = Path(args.save_dir).joinpath(Path(args.pl_ckpt_path).stem)
     save_dir.mkdir(exist_ok=True, parents=True)
 
+    lumi_template = torch.load(args.lumi_template_path)
+    lumi_template = lumi_template.unsqueeze(0)
+
     lumi05_mouth_without_R_ctrl_indices = evaluate_static_feature_dataset_config.lumi05_mouth_without_R_ctrl_indices
     lumi05_eye_without_R_ctrl_indices = evaluate_static_feature_dataset_config.lumi05_eye_without_R_ctrl_indices
 
@@ -88,6 +93,10 @@ def evaluate():
     lumi05_eye_L_ctrl_indices = evaluate_static_feature_dataset_config.lumi05_eye_L_ctrl_indices
     lumi05_mouth_R_ctrl_indices = evaluate_static_feature_dataset_config.lumi05_mouth_R_ctrl_indices
     lumi05_eye_R_ctrl_indices = evaluate_static_feature_dataset_config.lumi05_eye_R_ctrl_indices
+
+    ori_min = torch.FloatTensor(evaluate_static_feature_dataset_config.norm_ori_min)
+    tgt_min = torch.FloatTensor([evaluate_static_feature_dataset_config.norm_tgt_min])
+    remap_scale = torch.FloatTensor(evaluate_static_feature_dataset_config.norm_remap_scale)
     
     with _process_bar("evaluate", total=len(evaluate_static_feature_dataset)) as update:
 
@@ -117,7 +126,13 @@ def evaluate():
                 mouth_ctrl_pred = mouth_ctrl_pred.cpu().squeeze(0)
                 eye_ctrl_pred = eye_ctrl_pred.cpu().squeeze(0)
 
-                origin_ctrl_label = sample["ctrl_label"]
+                mix_pred = torch.cat([mouth_ctrl_pred, eye_ctrl_pred], dim=-1)
+                mix_pred = norm_decode(mix_pred, ori_min=ori_min, tgt_min=tgt_min, remap_scale=remap_scale)
+                mouth_ctrl_pred = mix_pred[..., :len(lumi05_mouth_without_R_ctrl_indices)]
+                eye_ctrl_pred = mix_pred[..., len(lumi05_mouth_without_R_ctrl_indices):]
+
+                origin_ctrl_label = lumi_template.clone()
+                origin_ctrl_label = origin_ctrl_label.repeat((len(mouth_ctrl_pred), 1))
                 
                 origin_ctrl_label[..., lumi05_mouth_without_R_ctrl_indices] = mouth_ctrl_pred
                 origin_ctrl_label[..., lumi05_eye_without_R_ctrl_indices] = eye_ctrl_pred

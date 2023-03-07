@@ -1,7 +1,7 @@
 
 import sys
 import logging
-from typing import Optional, List, Union
+from typing import Optional, List, Union, Callable
 from pathlib import Path
 import soundfile as sf
 from itertools import chain
@@ -19,34 +19,46 @@ logger = logging.getLogger(__file__)
 
 
 
-def load_sequence_data(manifest_or_list, max_keep_sample_size=None, min_keep_sample_size=None):
+def load_sequence_data(manifest_or_list, max_keep_sample_size=None, min_keep_sample_size=None, load_length: bool = True):
     if max_keep_sample_size is not None and min_keep_sample_size is not None:
         assert 0 <= min_keep_sample_size < max_keep_sample_size
 
     path_list = []
-    size_list = []
+    size_list = [] if load_length else None
 
     longer_num = 0
     shorter_num = 0
     with open(manifest_or_list, 'r') as f:
         for line in f:
-            _path, size = line.rstrip().split('\t')
-            size = int(size)
-            if max_keep_sample_size is not None and size > max_keep_sample_size:
-                longer_num += 1
-            elif min_keep_sample_size is not None and size < min_keep_sample_size:
-                shorter_num += 1
+            line = line.rstrip().split('\t')
+            if load_length:
+                _path, size = line
+                size = int(size)
+                if max_keep_sample_size is not None and size > max_keep_sample_size:
+                    longer_num += 1
+                elif min_keep_sample_size is not None and size < min_keep_sample_size:
+                    shorter_num += 1
+                else:
+                    path_list.append(str(_path))
+                    size_list.append(size)
             else:
-                path_list.append(str(_path))
-                size_list.append(size)
+                path_list.append(str(line[0]))
+            
     
-    logger.info(
-        (
-            f"max_keep={max_keep_sample_size}, min_keep={min_keep_sample_size}, "
-            f"loaded {len(path_list)}, skipped {shorter_num} short and {longer_num} long, "
-            f"longest-loaded={max(size_list)}, shortest-loaded={min(size_list)}"
+    if load_length:
+        logger.info(
+            (
+                f"max_keep={max_keep_sample_size}, min_keep={min_keep_sample_size}, "
+                f"loaded {len(path_list)}, skipped {shorter_num} short and {longer_num} long, "
+                f"longest-loaded={max(size_list)}, shortest-loaded={min(size_list)}"
+            )
         )
-    )
+    else:
+        logger.info(
+            (
+                f"loaded {len(path_list)}."
+            )
+        )
 
     return path_list, size_list
 
@@ -298,6 +310,8 @@ class StaticFeatureDatasetConfig:
         -0.0883, -0.1052, -0.1572, -0.2134, -0.0244,  0.6717,  0.8378,  0.9538,
         -0.0184, -0.0424, -0.0772, -1.0264, -0.1486, -0.2171, -0.3234, -0.1251,
         -0.8869, -0.8562])
+    norm_tgt_max: float = 1.
+    norm_tgt_min: float = -1.
     norm_map_scale: List[float] = field(default_factory=lambda: [23.0920,  2.5212,  2.2197,  5.8597, 20.0263, 14.2639,  5.1676,  1.1726,
          2.8716,  2.7210,  3.6860,  3.6202,  2.0405,  4.1471,  2.3198,  3.6539,
          3.0490,  5.6076,  1.6972,  1.7526,  1.9927,  2.7088,  1.8315,  1.7539,
@@ -315,6 +329,7 @@ class StaticFeatureDatasetConfig:
         0.5115, 0.7105, 0.6956, 0.4868, 0.2372, 0.3842, 0.5204, 0.2603, 0.4725,
         0.6502, 0.1643, 0.3761, 0.4118, 0.3219, 0.8941, 0.5637, 0.5276, 0.2751,
         0.6739, 0.8927, 0.7940])
+    
     
 
 
@@ -337,6 +352,7 @@ class StaticFeatureDataset(Dataset):
         label_rate: Optional[int] = 60, 
         max_keep_feature_size: Optional[int] = None,
         min_keep_feature_size: Optional[int] = None, 
+        align_length: bool = True
     ):
 
         self.audio_feature_path_list, self.audio_feature_size_list = load_sequence_data(manifest_or_list=static_audio_feature_manifest_or_list,
@@ -359,6 +375,7 @@ class StaticFeatureDataset(Dataset):
         self.label_rate = label_rate
         self.max_keep_feature_size = max_keep_feature_size
         self.min_keep_feature_size = min_keep_feature_size
+        self.align_length = align_length
 
     def get_audio_feature(self, index):
         feature = torch.load(self.audio_feature_path_list[index])
@@ -375,10 +392,12 @@ class StaticFeatureDataset(Dataset):
     def __getitem__(self, index):
         audio_feature = self.get_audio_feature(index)
         ctrl_label = self.get_ctrl_label(index)
-        if len(audio_feature) < len(ctrl_label):
-            audio_feature = torch.cat([audio_feature, audio_feature[[-1]].repeat(len(ctrl_label)-len(audio_feature), 1)])
-        elif len(audio_feature) > len(ctrl_label):
-            audio_feature = audio_feature[:len(ctrl_label)]
+
+        if self.align_length:
+            if len(audio_feature) < len(ctrl_label):
+                audio_feature = torch.cat([audio_feature, audio_feature[[-1]].repeat(len(ctrl_label)-len(audio_feature), 1)])
+            elif len(audio_feature) > len(ctrl_label):
+                audio_feature = audio_feature[:len(ctrl_label)]
 
         return {"idx": index, "audio_feature": audio_feature, "ctrl_label": ctrl_label}
 
@@ -391,6 +410,95 @@ class StaticFeatureDataset(Dataset):
         return self.audio_feature_size_list
 
 
+class PhnDataset(Dataset):
+    def __init__(self, phn_manifest_path) -> None:
+        self.phn_path_list, _ = load_sequence_data(phn_manifest_path, load_length=False)
+
+    def __len__(self) -> int:
+        return len(self.phn_path_list)
+    
+    def __getitem__(self, index):
+        return {
+            "phn_dict": torch.load(self.phn_path_list[index])
+        }
+
+
+
+def static_feature_phn_post_proces_fn(sample):
+    audio_feature = sample["audio_feature"]
+    ctrl_label = sample["ctrl_label"]
+    phn_dict = sample["phn_dict"]
+
+    if "total_length" in phn_dict:
+        phn_length = phn_dict["total_length"]
+    else:
+        phn_length = sum(phn_dict["frame_length_list"])
+
+    audio_feature_length = len(audio_feature)
+    ctrl_label_length = len(ctrl_label)
+    min_length = min(audio_feature_length, ctrl_label_length, phn_length)
+    
+    if audio_feature_length > min_length:
+        audio_feature = audio_feature[:min_length]
+    
+    if ctrl_label_length > min_length:
+        ctrl_label = ctrl_label[:min_length]
+
+    if phn_length > min_length:
+        diff = phn_length - min_length
+        phn_list = phn_dict["phn_list"]
+        frame_length_list = phn_dict["frame_length_list"]
+        for i in range(len(frame_length_list)-1, -1, -1):
+            cur_length = frame_length_list[i]
+            new_diff = diff - cur_length
+            if new_diff >= 0:
+                phn_list.pop()
+                frame_length_list.pop()
+                diff = new_diff
+            else:
+                frame_length_list[i] -= diff
+                break
+            
+        phn_dict["phn_list"] = phn_list
+        phn_dict["frame_length_list"] = frame_length_list
+        assert sum(frame_length_list) == min_length
+        phn_dict["total_length"] = min_length
+    
+    sample["audio_feature"] = audio_feature
+    sample["ctrl_label"] = ctrl_label
+    sample["phn_dict"] = phn_dict
+    return sample
+
+
+class CombinedFeatureDataset(Dataset):
+    """
+    将多个已经初始化好的 dataset 融合在一起；
+    用户需要自己保证相同 index 下在不同数据集中所取到的数据是相互对应的；
+    
+    """
+
+    def __init__(self, *datasets, post_process_fn: Optional[Callable]=None) -> None:
+
+        logger.info(f"一共横向合并 {len(datasets)} 个数据集.")
+
+        length = len(datasets[0])
+        for i in range(1, len(datasets)):
+            if len(datasets[i]) != length:
+                raise RuntimeError("数据集之间的长度不相同；")
+
+        self.datasets = datasets
+        self.post_process_fn = post_process_fn
+
+    def __len__(self) -> int:
+        return len(self.datasets[0])
+
+    def __getitem__(self, index):
+        sample = {}
+        for i in range(len(self.datasets)):
+            cur_sample = self.datasets[i][index]
+            sample.update(cur_sample)
+        sample = self.post_process_fn(sample)
+        return sample
 
 
 
@@ -752,6 +860,75 @@ def directly_pad_feature_fn(
 
 
 
+
+
+def pad_phn_fn(
+    phn_dict_list,
+    feature_size=None,
+    directly_pad: bool = True,
+    flatten_pad: bool = True,
+    phn_padding_idx: int = 0,
+    feature_start_list=None,
+):
+    """
+    再使用该函数前已经默认每一个 sample 的 phn 的长度已经提前和 feature 的长度对齐；
+
+    如果需要截断的话，先使用 frame_length_list 扩充 phn_list，然后再重新生成 frame_length_list；
+
+    directly_pad 仅在不需要（可能）截断时有效，即原本 collater 的 max_feature_size 为 None，因此只需要 pad 到当前 batch 的最长 sample 即可；
+
+    not flatten:
+        phn_list: [
+            [a, b, c, d],
+            [a, b, 0, 0],
+            [a, 0, 0, 0]
+        ],
+        frame_length_list: [
+            [4, 3, 2, 1],
+            [6, 7, 0, 0],
+            [3, 0, 0, 0]
+        ]
+    """
+
+    collated_phns = None
+    collated_phn_lists = None
+    collated_frame_length_lists = None
+    
+    if not directly_pad:
+        raise NotImplementedError("目前不支持截断的 collate 方式。")
+    else:
+        # directly_pad 为 True 时，因为保证是没有截断，因此 faeture size 就是当前batch中的 flatten 后最长的 sample 的长度；
+        if flatten_pad:
+            collated_phns = torch.zeros((len(phn_dict_list), feature_size)).long().fill_(phn_padding_idx)
+            for i in range(len(phn_dict_list)):
+                phn_dict = phn_dict_list[i]
+                phn_list = torch.LongTensor(phn_dict["phn_list"])
+                frame_length_list = torch.LongTensor(phn_dict["frame_length_list"])
+                total_length = phn_dict["total_length"]
+                flatten_phns = torch.repeat_interleave(phn_list, frame_length_list)
+                collated_phns[i][:total_length] = flatten_phns
+            # 因为这里需要的其他东西在前面已经得到了，例如 padding mask 等，因此这里直接返回 collated_phns；
+        else:
+            max_phn_list_length = max(len(w["phn_list"]) for w in phn_dict_list)
+            collated_phn_lists = torch.zeros((len(phn_dict_list), max_phn_list_length)).long().fill_(phn_padding_idx)
+            collated_frame_length_lists = torch.zeros((len(phn_dict_list), max_phn_list_length)).long()
+            for i in range(len(phn_dict_list)):
+                phn_dict = phn_dict_list[i]
+                phn_list = torch.LongTensor(phn_dict["phn_list"])
+                frame_length_list = torch.LongTensor(phn_dict["frame_length_list"])
+                total_length = phn_dict["total_length"]
+                collated_phn_lists[i][:len(phn_list)] = phn_list
+                collated_frame_length_lists[i][:len(frame_length_list)] = frame_length_list
+            
+    return {
+        "collated_phns": collated_phns,  # flatten
+        "collated_phn_lists": collated_phn_lists,
+        "collated_frame_length_lists": collated_frame_length_lists
+    }
+
+
+
+
 class AudioOnlyCollater:
     def __init__(
         self,
@@ -903,6 +1080,10 @@ class StaticFeatureCollater:
         max_feature_size: int,
         pad_feature: bool,
         random_crop: bool,
+
+        phn_directly_pad: bool = True,
+        phn_flatten_pad: bool = True,
+        phn_padding_idx: int = 0,
     ):
         if max_feature_size is None:
             max_feature_size = sys.maxsize
@@ -910,11 +1091,17 @@ class StaticFeatureCollater:
         self.max_feature_size = max_feature_size
         self.pad_feature = pad_feature
         self.random_crop = random_crop
+        self.phn_directly_pad = phn_directly_pad
+        self.phn_flatten_pad = phn_flatten_pad
+        self.phn_padding_idx = phn_padding_idx
 
         logger.info(f"StaticFeatureCollater is configured as: \n"
                     f"\tmax_feature_size: {max_feature_size},"
                     f"\tpad_feature: {pad_feature},"
-                    f"\trandom_crop: {random_crop},")
+                    f"\trandom_crop: {random_crop},"
+                    f"\phn_directly_pad: {phn_directly_pad},"
+                    f"\phn_flatten_pad: {phn_flatten_pad},"
+                    f"\phn_padding_idx: {phn_padding_idx},")
 
 
     def __call__(self, batch):
@@ -952,6 +1139,20 @@ class StaticFeatureCollater:
             "label_ntokens": ntokens,
             "ctrl_labels": collated_ctrl_labels
         }
+
+
+        # pad phn；
+        if "phn_dict" in sample_list[0]:
+            phn_dict_list = [s["phn_dict"] for s in sample_list]
+            padded_phn_dict = pad_phn_fn(
+                phn_dict_list=phn_dict_list,
+                feature_size=feature_size,
+                directly_pad=self.phn_directly_pad,
+                flatten_pad=self.phn_flatten_pad,
+                phn_padding_idx=self.phn_padding_idx,
+                feature_start_list=feature_start_list
+            )
+            collated_batch["phn_dict"] = padded_phn_dict
 
         return collated_batch
 

@@ -213,3 +213,41 @@ class EEGTransformer(nn.Module):
 
         # out = self.drop(out)
         return out, mask
+    
+
+
+class PhnModel(nn.Module):
+
+    def __init__(self, phn_num: int, hidden_size: int, padding_idx: int = 0) -> None:
+        super().__init__()
+
+        self.embedding = nn.Embedding(
+            num_embeddings=phn_num,
+            embedding_dim=hidden_size,
+            padding_idx=padding_idx  # 注意这里默认第一个是 pad idx，一般我们设置为 sil；
+        )
+
+
+    def forward(self, phns=None, phn_list=None, frame_length_list=None):
+        """
+        对应 data_prepare.pad_phn_fn 中的：
+            collated_phns
+            collated_phn_lists
+            collated_frame_length_lists
+
+        phns: [B, N]
+
+        """
+
+        embedding = self.embedding(phns)  # [B, N, H]
+        return embedding
+
+
+
+
+
+
+
+
+
+

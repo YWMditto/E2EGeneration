@@ -86,8 +86,8 @@ if __name__ == "__main__":
     # )
 
     transform_pt2npy_dir(
-        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/new_loss/epoch=4-step=3990-validate_loss=0.03",
-        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/new_loss/epoch=4-step=3990-validate_loss=0.03_npy"
+        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=99-step=79800-validate_loss=0.11",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=99-step=79800-validate_loss=0.11_npy"
     )
 
 

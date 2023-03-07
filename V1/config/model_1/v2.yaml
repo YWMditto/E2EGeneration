@@ -1,23 +1,23 @@
 
-
 UsedDatasetConfig:
   train_dataset_config:
     static_audio_feature_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60_train.txt"
-    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl_train.txt"
+    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_normalized_extracted_ctrl_train.txt"
     feature_rate: 60
     label_rate: 60
     max_keep_feature_size:
     min_keep_feature_size:
   validate_dataset_config:
     static_audio_feature_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_huebrt_60_validate.txt"
-    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_ctrl_validate.txt"
+    ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_normalized_extracted_ctrl_validate.txt"
     feature_rate: 60
     label_rate: 60
     max_keep_feature_size:
     min_keep_feature_size:
 
 TrainingConfig:
-  devices: [1]
+  gradient_clip_val:
+  devices: [2]
   checkpoint_config:
     save_checkpoint: True
     checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/v2"
@@ -31,29 +31,30 @@ TrainingConfig:
     every_n_train_steps: 
     save_on_train_epoch_end: False
     
-
 Model1Config:
+  pre_lnorm: True
+
   n_lumi_mouth_channels: 52
   n_lumi_eye_channels: 14
-  hidden_size: 768  # hidden size
+  hidden_size: 384  # hidden size
   # max_seq_len: 2048
   static_feature_dim: 1024
 
-  encoder_layer_num: 6
-  encoder_head_num: 8
+  encoder_layer_num: 3
+  encoder_head_num: 4
   encoder_head_dim: 96
-  encoder_conv1d_filter_size: 2048
-  encoder_conv1d_kernel_size: 3
+  encoder_conv1d_filter_size: 1536
+  encoder_conv1d_kernel_size: 1
   # encoder_output_size: 384
-  encoder_dropout_p: 0.2
+  encoder_dropout_p: 0.1
   encoder_dropatt_p: 0.1
   encoder_dropemb_p: 0.0
 
-  decoder_layer_num: 6
-  decoder_head_num: 8
+  decoder_layer_num: 3
+  decoder_head_num: 4
   decoder_head_dim: 96
-  decoder_conv1d_filter_size: 2048
-  decoder_conv1d_kernel_size: 3
-  decoder_dropout_p: 0.2
+  decoder_conv1d_filter_size: 1536
+  decoder_conv1d_kernel_size: 1
+  decoder_dropout_p: 0.1
   decoder_dropatt_p: 0.1
   decoder_dropemb_p: 0.0
