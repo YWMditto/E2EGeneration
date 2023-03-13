@@ -6,6 +6,11 @@ from dataclasses import dataclass, field, fields, Field, MISSING, InitVar, is_da
 import yaml
 from pathlib import Path
 
+import torch
+import torch.nn as nn
+
+import numpy as np
+
 
 logger = logging.getLogger(__file__)
 
@@ -73,6 +78,47 @@ def parse_config_from_yaml(config, *DataclassConfig):
     return ins_config_dict
 
 
+
+def _init_weights(module):
+    """Initialize the weights"""
+    if isinstance(module, nn.Linear):
+        # Slightly different from the TF version which uses truncated_normal for initialization
+        # cf https://github.com/pytorch/pytorch/pull/5617
+        module.weight.data.normal_(mean=0.0, std=0.02)
+    elif isinstance(module, (nn.LayerNorm, nn.GroupNorm)):
+        module.bias.data.zero_()
+        module.weight.data.fill_(1.0)
+    elif isinstance(module, nn.Conv1d):
+        nn.init.kaiming_normal_(module.weight.data)
+    if isinstance(module, (nn.Linear, nn.Conv1d)) and module.bias is not None:
+        module.bias.data.zero_()
+
+
+
+def align_length_with_directly_insert(data, tgt_length):
+
+    length = len(data)
+    if length == tgt_length:
+        return data
+    assert length < tgt_length
+
+    insert_num = tgt_length - length
+    gap_num = length // insert_num
+
+    
+    if isinstance(data, torch.Tensor):
+        new_data = data.new_zeros(size=(tgt_length, ) + data.shape[1:])
+    elif isinstance(data, np.ndarray):
+        new_data = np.zeros((tgt_length, ) + data.shape[1:])
+    else:
+        new_data = [None for _ in range(tgt_length)]
+
+    for i in range(insert_num):
+        new_data[i*gap_num+i:(i+1)*gap_num+i] = data[i*gap_num:(i+1)*gap_num]
+        new_data[(i+1)*gap_num+i] = new_data[max((i+1)*gap_num+i - 1, 0)]
+
+    new_data[(i+1)*gap_num+i+1:] = data[(i+1)*gap_num:]
+    return new_data
 
 
 if __name__ == '__main__':

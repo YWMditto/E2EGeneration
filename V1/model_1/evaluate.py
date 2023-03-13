@@ -1,7 +1,7 @@
 
 
 import sys
-sys.path.append(".")
+sys.path.extend([".", "."])
 import argparse
 
 import torch
@@ -18,10 +18,13 @@ from data_prepare import (
     StaticFeatureDataset,
     StaticFeatureDatasetConfig,
     StaticFeatureCollater,
-    norm_decode
+    norm_decode,
+    PhnDataset,
+    CombinedFeatureDataset,
+    static_feature_phn_post_proces_fn
 )
 
-from V1.model_1.train import (
+from train import (
     TrainingConfig, 
     UsedDatasetConfig,
     parse_config_from_yaml
@@ -38,8 +41,10 @@ def evaluate():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--pl_ckpt_path")
-    parser.add_argument("--config_path")
-    parser.add_argument("--evaluate_config")
+    parser.add_argument("--train_config_path")
+    parser.add_argument("--eval_name_manifest_path")
+    parser.add_argument("--eval_static_feature_dir")
+    parser.add_argument("--eval_ctrl_label_dir")
     parser.add_argument("--lumi_template_path")
     parser.add_argument("--save_dir")
     parser.add_argument("--device", type=eval, default=0)
@@ -47,7 +52,7 @@ def evaluate():
     args = parser.parse_args()
 
     # 这里加载训练用的 config 只是为了加载模型；
-    config_dict = parse_config_from_yaml(args.config_path, UsedDatasetConfig, Model1Config, TrainingConfig)
+    config_dict = parse_config_from_yaml(args.train_config_path, UsedDatasetConfig, Model1Config, TrainingConfig)
     # used_dataset_config: UsedDatasetConfig = config_dict["UsedDatasetConfig"]
     # validate_static_feature_dataset_config: StaticFeatureDatasetConfig = used_dataset_config.validate_dataset_config
     model1_config: Model1Config = config_dict['Model1Config']
@@ -68,17 +73,23 @@ def evaluate():
     model.to(device)
     model.eval()
 
-    evaluate_config_dict = parse_config_from_yaml(args.evaluate_config, StaticFeatureDatasetConfig)
-    evaluate_static_feature_dataset_config: StaticFeatureDatasetConfig = evaluate_config_dict["StaticFeatureDatasetConfig"]
-    evaluate_static_feature_dataset = StaticFeatureDataset(
-        static_audio_feature_manifest_or_list=evaluate_static_feature_dataset_config.static_audio_feature_manifest_or_list,
-        ctrl_manifest_or_list=evaluate_static_feature_dataset_config.ctrl_manifest_or_list,
-        feature_rate=evaluate_static_feature_dataset_config.feature_rate,
-        label_rate=evaluate_static_feature_dataset_config.label_rate,
-        max_keep_feature_size=evaluate_static_feature_dataset_config.max_keep_feature_size,
-        min_keep_feature_size=evaluate_static_feature_dataset_config.min_keep_feature_size
+    evaluate_static_feature_dataset_config = StaticFeatureDatasetConfig(
+        name_manifest_path=args.eval_name_manifest_path,
+        static_feature_dir=args.eval_static_feature_dir,
+        ctrl_label_dir=args.eval_ctrl_label_dir,
     )
-    feature_path_list = evaluate_static_feature_dataset.audio_feature_path_list
+    evaluate_static_feature_dataset = StaticFeatureDataset(
+        name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path,
+        static_feature_dir=evaluate_static_feature_dataset_config.static_feature_dir,
+        ctrl_label_dir=evaluate_static_feature_dataset_config.ctrl_label_dir,
+    )
+
+    names_list = evaluate_static_feature_dataset.names
+
+    phn_embedding_config = training_config.phn_embedding_config
+    if phn_embedding_config.add_phn:
+        evaluate_phn_dataset = PhnDataset(name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path, phn_dir=phn_embedding_config.phn_dir)
+        evaluate_static_feature_dataset = CombinedFeatureDataset(evaluate_static_feature_dataset, evaluate_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
 
     save_dir = Path(args.save_dir).joinpath(Path(args.pl_ckpt_path).stem)
     save_dir.mkdir(exist_ok=True, parents=True)
@@ -118,13 +129,46 @@ def evaluate():
                     },
                     # "mouth_ctrl_labels": mouth_ctrl_labels.to(device),
                     # "eye_ctrl_labels": eye_ctrl_labels.to(device)
+
                 }
+
+                if phn_embedding_config.add_phn:
+                    """
+                    # flatten = True；
+                    phn_dict = sample["phn_dict"]
+                    phn_list = phn_dict["phn_list"]
+                    frame_length_list = phn_dict["frame_length_list"]
+
+                    phns = torch.repeat_interleave(torch.LongTensor(phn_list), torch.LongTensor(frame_length_list))
+                    phns = phns.unsqueeze(0).to(device)
+                    collated_batch["phn_dict"] = {
+                        "collated_phns": phns,
+                        "collated_phn_lists": None,
+                        "collated_frame_length_lists": None
+                    }
+                    """
+                    phn_dict = sample["phn_dict"]
+                    phn_list = phn_dict["phn_list"]
+                    frame_length_list = phn_dict["frame_length_list"]
+                    phn_list = torch.LongTensor(phn_list).unsqueeze(0).to(device)
+                    frame_length_list = torch.LongTensor(frame_length_list).unsqueeze(0).to(device)
+                    padding_mask = torch.zeros(phn_list.shape).bool().fill_(True).to(device)
+                    collated_batch["phn_dict"] = {
+                        "collated_phns": None,
+                        "collated_phn_lists": phn_list,
+                        "collated_frame_length_lists": frame_length_list,
+                        "phn_padding_mask": padding_mask
+                    }
 
                 output_dict = model.inference_step(collated_batch)
                 mouth_ctrl_pred = output_dict["mouth_ctrl_pred"]
-                eye_ctrl_pred = output_dict["eye_ctrl_pred"]
                 mouth_ctrl_pred = mouth_ctrl_pred.cpu().squeeze(0)
-                eye_ctrl_pred = eye_ctrl_pred.cpu().squeeze(0)
+
+                if training_config.learn_eye:
+                    eye_ctrl_pred = output_dict["eye_ctrl_pred"]
+                    eye_ctrl_pred = eye_ctrl_pred.cpu().squeeze(0)
+                else:
+                    eye_ctrl_pred = torch.zeros((len(mouth_ctrl_pred), len(lumi05_eye_without_R_ctrl_indices)))
 
                 mix_pred = torch.cat([mouth_ctrl_pred, eye_ctrl_pred], dim=-1)
                 mix_pred = norm_decode(mix_pred, ori_min=ori_min, tgt_min=tgt_min, remap_scale=remap_scale)
@@ -135,12 +179,13 @@ def evaluate():
                 origin_ctrl_label = origin_ctrl_label.repeat((len(mouth_ctrl_pred), 1))
                 
                 origin_ctrl_label[..., lumi05_mouth_without_R_ctrl_indices] = mouth_ctrl_pred
-                origin_ctrl_label[..., lumi05_eye_without_R_ctrl_indices] = eye_ctrl_pred
-
                 origin_ctrl_label[..., lumi05_mouth_R_ctrl_indices] = origin_ctrl_label[..., lumi05_mouth_L_ctrl_indices]
-                origin_ctrl_label[..., lumi05_eye_R_ctrl_indices] = origin_ctrl_label[..., lumi05_eye_L_ctrl_indices]
 
-                torch.save(origin_ctrl_label, save_dir.joinpath(Path(feature_path_list[idx]).stem + ".pt"))
+                if training_config.learn_eye:
+                    origin_ctrl_label[..., lumi05_eye_without_R_ctrl_indices] = eye_ctrl_pred
+                    origin_ctrl_label[..., lumi05_eye_R_ctrl_indices] = origin_ctrl_label[..., lumi05_eye_L_ctrl_indices]
+
+                torch.save(origin_ctrl_label, save_dir.joinpath(names_list[idx] + ".pt"))
 
                 update(1)
 

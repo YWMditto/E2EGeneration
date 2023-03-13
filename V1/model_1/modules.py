@@ -174,7 +174,7 @@ class TransformerLayer(nn.Module):
         output = self.pos_ff(output)
         output *= mask
         return output
-
+    
 
 class EEGTransformer(nn.Module):
     def __init__(self, n_layer, n_head, d_model, d_head, d_inner, kernel_size,
@@ -218,7 +218,8 @@ class EEGTransformer(nn.Module):
 
 class PhnModel(nn.Module):
 
-    def __init__(self, phn_num: int, hidden_size: int, padding_idx: int = 0) -> None:
+    def __init__(self, n_layer, n_head, d_model, d_head, d_inner, kernel_size,
+                 dropout, dropatt, dropemb, phn_num: int, hidden_size: int, padding_idx: int = 0, pre_lnorm: bool = True) -> None:
         super().__init__()
 
         self.embedding = nn.Embedding(
@@ -227,8 +228,19 @@ class PhnModel(nn.Module):
             padding_idx=padding_idx  # 注意这里默认第一个是 pad idx，一般我们设置为 sil；
         )
 
+        self.pos_emb = PositionalEmbedding(d_model)
+        self.drop = nn.Dropout(dropemb)
+        self.layers = nn.ModuleList()
 
-    def forward(self, phns=None, phn_list=None, frame_length_list=None):
+        for _ in range(n_layer):
+            self.layers.append(
+                TransformerLayer(
+                    n_head, d_model, d_head, d_inner, kernel_size, dropout,
+                    dropatt=dropatt, pre_lnorm=pre_lnorm)
+            )
+
+
+    def forward(self, phns=None, phn_list=None, frame_length_list=None, padding_mask=None, seq_lens=None):
         """
         对应 data_prepare.pad_phn_fn 中的：
             collated_phns
@@ -237,10 +249,49 @@ class PhnModel(nn.Module):
 
         phns: [B, N]
 
+        padding_mask 和 seq_lens 具体是啥和是使用 phns 还是 phn_list 对应；
+
         """
 
-        embedding = self.embedding(phns)  # [B, N, H]
-        return embedding
+        if phn_list == None:
+            embeddings = self.embedding(phns)  # [B, N, H]
+            return embeddings
+        else:
+
+            embeddings = self.embedding(phn_list)
+
+            inp = embeddings
+
+            if padding_mask is None:
+                mask = mask_from_lens(seq_lens).unsqueeze(2)  # [B, N, 1]，这个 mask 不是 casual mask，而就是 padding mask；
+            else:
+                mask = padding_mask.unsqueeze(2)
+
+            pos_seq = torch.arange(inp.size(1), device=inp.device).to(inp.dtype)
+            pos_emb = self.pos_emb(pos_seq) * mask
+
+            out = self.drop(inp + pos_emb)
+
+            for layer in self.layers:
+                out = layer(out, mask=mask)  # [B, N, H]
+
+            expanded_out = []
+            max_length = 0
+            for i in range(len(out)):
+                cur_out = torch.repeat_interleave(out[i], frame_length_list[i], dim=0)
+                expanded_out.append(cur_out)
+                max_length = max(max_length, len(cur_out))
+
+            collated_expanded_out = expanded_out[0].new_zeros(size=(len(expanded_out), max_length, expanded_out[0].size(-1)))
+            for i in range(len(expanded_out)):
+                cur_data = expanded_out[i]
+                diff = len(cur_data) - max_length
+                if diff == 0:
+                    collated_expanded_out[i] = cur_data
+                else:
+                    collated_expanded_out[i][:len(cur_data)] = cur_data
+
+            return collated_expanded_out
 
 
 

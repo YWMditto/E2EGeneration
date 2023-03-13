@@ -6,24 +6,10 @@ from typing import Any
 import torch.nn as nn
 
 from .modules import EEGTransformer, PhnModel
-from losses import WingLoss
+from losses import WingLoss, L1Loss
 
+from helper_fns import _init_weights
 
-
-
-def _init_weights(module):
-    """Initialize the weights"""
-    if isinstance(module, nn.Linear):
-        # Slightly different from the TF version which uses truncated_normal for initialization
-        # cf https://github.com/pytorch/pytorch/pull/5617
-        module.weight.data.normal_(mean=0.0, std=0.02)
-    elif isinstance(module, (nn.LayerNorm, nn.GroupNorm)):
-        module.bias.data.zero_()
-        module.weight.data.fill_(1.0)
-    elif isinstance(module, nn.Conv1d):
-        nn.init.kaiming_normal_(module.weight.data)
-    if isinstance(module, (nn.Linear, nn.Conv1d)) and module.bias is not None:
-        module.bias.data.zero_()
 
 
 
@@ -50,17 +36,26 @@ class Model1Config:
     encoder_dropatt_p: float = 0.1
     encoder_dropemb_p: float = 0.0
 
-    decoder_layer_num: int = 5
-    decoder_head_num: int = 1
-    decoder_head_dim: int = 64
-    decoder_conv1d_filter_size: int = 1536
-    decoder_conv1d_kernel_size: int = 3
-    decoder_dropout_p: float = 0.1
-    decoder_dropatt_p: float = 0.1
-    decoder_dropemb_p: float = 0.0
+    mouth_decoder_layer_num: int = 5
+    mouth_decoder_head_num: int = 1
+    mouth_decoder_head_dim: int = 64
+    mouth_decoder_conv1d_filter_size: int = 1536
+    mouth_decoder_conv1d_kernel_size: int = 3
+    mouth_decoder_dropout_p: float = 0.1
+    mouth_decoder_dropatt_p: float = 0.1
+    mouth_decoder_dropemb_p: float = 0.0
 
+    eye_decoder_layer_num: int = 2
+    eye_decoder_head_num: int = 2
+    eye_decoder_head_dim: int = 64
+    eye_decoder_conv1d_filter_size: int = 1536
+    eye_decoder_conv1d_kernel_size: int = 3
+    eye_decoder_dropout_p: float = 0.1
+    eye_decoder_dropatt_p: float = 0.1
+    eye_decoder_dropemb_p: float = 0.0
 
     # phn config 在 training config 中进行设置；
+    
 
 
 
@@ -69,7 +64,6 @@ class Model1Output:
     encoder_hidden_states: Any = None
     mouth_decoder_hidden_states: Any = None
     eye_decoder_hidden_states: Any = None
-
 
 
 
@@ -98,51 +92,64 @@ class Model1(nn.Module):
             pre_lnorm=config.pre_lnorm
         )
 
-        self.mouth_decoder = EEGTransformer(
-            n_layer=config.decoder_layer_num, 
-            n_head=config.decoder_head_num, 
-            d_model=config.hidden_size, 
-            d_head=config.decoder_head_dim, 
-            d_inner=config.decoder_conv1d_filter_size, 
-            kernel_size=config.decoder_conv1d_kernel_size,
-            dropout=config.decoder_dropout_p, 
-            dropatt=config.decoder_dropatt_p, 
-            dropemb=config.decoder_dropemb_p, 
-            pre_lnorm=config.pre_lnorm
-        )
-        self.mouth_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_mouth_channels)
+        assert training_config.learn_mouth or training_config.learn_eye
 
+        if training_config.learn_mouth:
+            self.mouth_decoder = EEGTransformer(
+                n_layer=config.mouth_decoder_layer_num, 
+                n_head=config.mouth_decoder_head_num, 
+                d_model=config.hidden_size, 
+                d_head=config.mouth_decoder_head_dim, 
+                d_inner=config.mouth_decoder_conv1d_filter_size, 
+                kernel_size=config.mouth_decoder_conv1d_kernel_size,
+                dropout=config.mouth_decoder_dropout_p, 
+                dropatt=config.mouth_decoder_dropatt_p, 
+                dropemb=config.mouth_decoder_dropemb_p, 
+                pre_lnorm=config.pre_lnorm
+            )
+            self.mouth_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_mouth_channels)
 
-        self.eye_decoder = EEGTransformer(
-            n_layer=config.decoder_layer_num, 
-            n_head=config.decoder_head_num, 
-            d_model=config.hidden_size, 
-            d_head=config.decoder_head_dim, 
-            d_inner=config.decoder_conv1d_filter_size, 
-            kernel_size=config.decoder_conv1d_kernel_size,
-            dropout=config.decoder_dropout_p, 
-            dropatt=config.decoder_dropatt_p, 
-            dropemb=config.decoder_dropemb_p, 
-            pre_lnorm=config.pre_lnorm
-        )
-        self.eye_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_eye_channels)
+        if training_config.learn_eye:
+            self.eye_decoder = EEGTransformer(
+                n_layer=config.eye_decoder_layer_num, 
+                n_head=config.eye_decoder_head_num, 
+                d_model=config.hidden_size, 
+                d_head=config.eye_decoder_head_dim, 
+                d_inner=config.eye_decoder_conv1d_filter_size, 
+                kernel_size=config.eye_decoder_conv1d_kernel_size,
+                dropout=config.eye_decoder_dropout_p, 
+                dropatt=config.eye_decoder_dropatt_p, 
+                dropemb=config.eye_decoder_dropemb_p, 
+                pre_lnorm=config.pre_lnorm
+            )
+            self.eye_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_eye_channels)
 
         # 注意如果之后开始使用预训练模型，那么需要注意随机初始化的位置；
         self.apply(_init_weights)
 
         # phn embedding
-
-        if training_config.phn_embedding_config.add_phn:
+        phn_embedding_config=training_config.phn_embedding_config
+        if phn_embedding_config.add_phn:
             self.phn_model = PhnModel(
-                phn_num=training_config.phn_embedding_config.phn_num,
+                n_layer=phn_embedding_config.phn_layer_num, 
+                n_head=phn_embedding_config.phn_head_num, 
+                d_model=config.hidden_size, 
+                d_head=phn_embedding_config.phn_head_dim, 
+                d_inner=phn_embedding_config.phn_conv1d_filter_size, 
+                kernel_size=phn_embedding_config.phn_conv1d_kernel_size,
+                dropout=phn_embedding_config.phn_dropout_p, 
+                dropatt=phn_embedding_config.phn_dropatt_p, 
+                dropemb=phn_embedding_config.phn_dropemb_p,
+                phn_num=phn_embedding_config.phn_num,
                 hidden_size=config.hidden_size,
-                padding_idx=training_config.phn_embedding_config.phn_padding_idx
+                padding_idx=phn_embedding_config.phn_padding_idx
             )
-
 
         self.loss_config = training_config.loss_config
         self.wing_loss_config = self.loss_config.wing_loss_config
         self.wing_loss_fn = WingLoss(omega=self.wing_loss_config.omega, epsilon=self.wing_loss_config.epsilon, emoji_weight=self.wing_loss_config.emoji_weight)
+
+        self.l1_loss_fn = L1Loss()
 
         self.config = config
         self.training_config = training_config
@@ -158,16 +165,25 @@ class Model1(nn.Module):
         encoder_hidden_states, _ = self.encoder(audio_features, padding_mask=padding_mask)
 
         # mouth decoder
-        mouth_encoder_hidden_states = encoder_hidden_states
-        if self.training_config.phn_embedding_config.add_phn:
-            phn_dict = batch["phn_dict"]
-            phn_hidden_states = self.phn_model(phns=phn_dict["collated_phns"])
-            mouth_encoder_hidden_states = mouth_encoder_hidden_states + phn_hidden_states
-        mouth_decoder_hidden_states, _ = self.mouth_decoder(mouth_encoder_hidden_states, padding_mask=padding_mask)
+        mouth_decoder_hidden_states = None
+        if self.training_config.learn_mouth:
+            mouth_encoder_hidden_states = encoder_hidden_states
+            if self.training_config.phn_embedding_config.add_phn:
+                phn_dict = batch["phn_dict"]
+                phn_hidden_states = self.phn_model(
+                    phns=phn_dict["collated_phns"],
+                    phn_list=phn_dict["collated_phn_lists"], 
+                    frame_length_list=phn_dict["collated_frame_length_lists"], 
+                    padding_mask=phn_dict["phn_padding_mask"],
+                )
+                mouth_encoder_hidden_states = mouth_encoder_hidden_states + phn_hidden_states
+            mouth_decoder_hidden_states, _ = self.mouth_decoder(mouth_encoder_hidden_states, padding_mask=padding_mask)
 
         # eye decoder
-        eye_encoder_hidden_states = encoder_hidden_states
-        eye_decoder_hidden_states, _ = self.eye_decoder(eye_encoder_hidden_states, padding_mask=padding_mask)
+        eye_decoder_hidden_states = None
+        if self.training_config.learn_eye:
+            eye_encoder_hidden_states = encoder_hidden_states
+            eye_decoder_hidden_states, _ = self.eye_decoder(eye_encoder_hidden_states, padding_mask=padding_mask)
 
         return Model1Output(
             encoder_hidden_states=encoder_hidden_states,
@@ -211,24 +227,40 @@ class Model1(nn.Module):
 
         padding_mask = batch["net_input"]["padding_mask"]  # padding mask 在两个位置起作用，一是实际的模型的 forward 的时候，例如计算 attention 的时候；二是在针对每个位置计算 loss 的时候；第二点通常也可以通过 length 实现；
 
+        loss = 0.
         # mouth loss
-        muoth_decoder_hidden_states = model_output.mouth_decoder_hidden_states
-        mouth_ctrl_pred = self.mouth_head(muoth_decoder_hidden_states)
-        mouth_ctrl_labels = batch["mouth_ctrl_labels"]
-        mouth_wing_loss, mouth_wing_record_loss, mouth_wing_record_num  = self.wing_loss_fn(mouth_ctrl_pred, mouth_ctrl_labels, padding_mask)
-        
-        # ete loss
-        eye_decoder_hidden_states = model_output.eye_decoder_hidden_states
-        eye_ctrl_pred = self.eye_head(eye_decoder_hidden_states)
-        eye_ctrl_labels = batch["eye_ctrl_labels"]
-        eye_wing_loss, eye_wing_record_loss, eye_wing_record_num = self.wing_loss_fn(eye_ctrl_pred, eye_ctrl_labels, padding_mask)
+        mouth_wing_loss = None
+        mouth_l1_loss = None
+        if self.training_config.learn_mouth:
+            muoth_decoder_hidden_states = model_output.mouth_decoder_hidden_states
+            mouth_ctrl_pred = self.mouth_head(muoth_decoder_hidden_states)
+            mouth_ctrl_labels = batch["mouth_ctrl_labels"]
 
-        loss = mouth_wing_loss + eye_wing_loss
+            if self.training_config.loss_config.use_wing_loss:
+                mouth_wing_loss, mouth_wing_record_loss, mouth_wing_record_num = self.wing_loss_fn(mouth_ctrl_pred, mouth_ctrl_labels, padding_mask)
+                loss += self.training_config.loss_config.wing_loss_weight * mouth_wing_loss
+            
+            if self.training_config.loss_config.use_l1_loss:
+                mouth_l1_loss, mouth_l1_record_loss, mouth_l1_record_num  = self.l1_loss_fn(mouth_ctrl_pred, mouth_ctrl_labels, padding_mask)
+                loss += self.training_config.loss_config.l1_loss_weight * mouth_l1_loss
+
+            # print(loss)
+
+        # TODO 因为现在还没有跑出 mouth 的基本的效果，因此这里先不管 eye，等到之后把 mouth 调通之后再来重新修改 eye 的代码；
+        # eye loss
+        if self.training_config.learn_eye:
+            eye_decoder_hidden_states = model_output.eye_decoder_hidden_states
+            eye_ctrl_pred = self.eye_head(eye_decoder_hidden_states)
+            eye_ctrl_labels = batch["eye_ctrl_labels"]
+            eye_wing_loss, eye_wing_record_loss, eye_wing_record_num = self.wing_loss_fn(eye_ctrl_pred, eye_ctrl_labels, padding_mask)
+            loss += eye_wing_loss
+
 
         return {
             "loss": loss,
-            "mouth_wing_loss_record": (mouth_wing_record_loss, mouth_wing_record_num),
-            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_num)
+            "mouth_wing_loss_record": (mouth_wing_record_loss, mouth_wing_record_num) if mouth_wing_loss else None,
+            "mouth_l1_loss_record": (mouth_l1_record_loss, mouth_l1_record_num) if mouth_l1_loss else None,
+            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_num) if self.training_config.learn_eye else None
         }
         
 
@@ -238,8 +270,12 @@ class Model1(nn.Module):
 
         model_output = self(batch)
 
-        mouth_ctrl_pred = self.mouth_head(model_output.mouth_decoder_hidden_states)
-        eye_ctrl_pred = self.eye_head(model_output.eye_decoder_hidden_states)
+        mouth_ctrl_pred = None
+        if self.training_config.learn_mouth:
+            mouth_ctrl_pred = self.mouth_head(model_output.mouth_decoder_hidden_states)
+        eye_ctrl_pred = None
+        if self.training_config.learn_eye:
+            eye_ctrl_pred = self.eye_head(model_output.eye_decoder_hidden_states)
 
         return {
             "mouth_ctrl_pred": mouth_ctrl_pred,

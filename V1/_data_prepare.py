@@ -155,29 +155,16 @@ def verify_label_lengths(audio_size_list, audio_path_list, ctrl_size_list, ctrl_
 
 
 
-def load_data_directly(name_manifest_path):
-    names = []
-    with open(name_manifest_path, "r") as f:
-        for line in f:
-            name = line.rstrip()
-            names.append(name)
-    return names
-
-
 @dataclass
 class RawAudioDatasetConfig:
     # 为了能够直接初始化这些 conifg，所有的值如果确实没有默认值全部设置成 None；
-    name_manifest_path: Optional[str] = None
-    audio_dir: Optional[str] = None
-    ctrl_label_dir: Optional[str] = None
-
-    # TODO 为了支持 constant token batch sampler，之后需要添加一个长度的字典；
-    sample_rate: int = 16000
-    label_rate: int = 60
-
+    audio_manifest_or_list: Optional[str] = None
+    ctrl_manifest_or_list: Optional[str] = None
+    sample_rate: Optional[int] = None
+    label_rate: Optional[int] = None
     max_keep_sample_size: Optional[int] = None
     min_keep_sample_size: Optional[int] = None
-    normalize: bool = True
+    normalize: bool = False
     
     # 在 2007 控制器向量中对应的坐标；
     lumi05_mouth_without_R_ctrl_indices: List[int] = field(default_factory=lambda: LUMI05_MOUTH_WITHOUT_R_CTRL_INDICES)
@@ -197,8 +184,8 @@ class RawAudioDatasetConfig:
     norm_remap_scale: List[float] = field(default_factory=lambda: NORM_REMAP_SCALE)
 
     # collate config
-    max_sample_size: Optional[int] = None
-    pad_audio: bool = True
+    max_feature_size: Optional[int] = None
+    pad_feature: bool = True
     random_crop: bool = False
     
 
@@ -223,29 +210,38 @@ class RawAudioDataset(Dataset):
 
     def __init__(
         self,
-        name_manifest_path: Optional[str] = None,
-        audio_dir: Optional[str] = None,
-        ctrl_label_dir: Optional[str] = None,
+        audio_manifest_or_list: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
+        ctrl_manifest_or_list: Union[str, Path, List[Union[str, Path]]] = None,
         sample_rate: Optional[int] = 16000,
+        label_rate: Optional[int] = 60, 
         max_keep_sample_size: Optional[int] = None,
         min_keep_sample_size: Optional[int] = None, 
         normalize: bool = False, 
-        audio_suffix: str = ".wav",
-        label_suffix: str = ".pt"
     ):
-        self.names = load_data_directly(name_manifest_path)
-        self.audio_dir = Path(audio_dir)
-        self.ctrl_label_dir = Path(ctrl_label_dir)
+        
+        # if audio_manifest_or_list is None and static_audio_feature_manifest_or_list is None:
+        #     error_meg = f"audio_manifest_or_list and static_audio_feature_manifest_or_list are all None."
+        #     logger.error(error_meg)
+        #     raise ValueError(error_meg)
 
+        self.audio_path_list, self.audio_size_list = load_sequence_data(manifest_or_list=audio_manifest_or_list, 
+                                                                max_keep_sample_size=max_keep_sample_size, min_keep_sample_size=min_keep_sample_size)
+        self.ctrl_path_list, self.ctrl_size_list = load_sequence_data(manifest_or_list=ctrl_manifest_or_list)
+
+        if sample_rate is not None and label_rate is not None:
+            verify_label_lengths(audio_size_list=self.audio_size_list, audio_path_list=self.audio_path_list, ctrl_size_list=self.ctrl_size_list, 
+                                ctrl_path_list=self.ctrl_path_list, sample_rate=sample_rate, label_rate=label_rate, tol=0.1)
+        
+        self.audio_manifest_or_list = audio_manifest_or_list
+        self.ctrl_manifest_or_list = ctrl_manifest_or_list
         self.sample_rate = sample_rate
+        self.label_rate = label_rate
         self.max_keep_sample_size = max_keep_sample_size
         self.min_keep_sample_size = min_keep_sample_size
         self.normalize = normalize
-        self.audio_suffix = audio_suffix
-        self.label_suffix = label_suffix
 
     def get_audio(self, index):
-        audio_path = self.audio_dir.joinpath(self.names[index]+self.audio_suffix)
+        audio_path = self.audio_path_list[index]
         audio, cur_sample_rate = sf.read(audio_path)
         audio = torch.from_numpy(audio).float()
         audio = self.postprocess(audio, cur_sample_rate)
@@ -265,23 +261,23 @@ class RawAudioDataset(Dataset):
         return wav
 
     def get_ctrl_label(self, index):
-        return torch.load(self.ctrl_label_dir.joinpath(self.names[index]+self.label_suffix))
+        return torch.load(self.ctrl_path_list[index])
     
     def __len__(self):
-        return len(self.names)
+        return len(self.audio_path_list)
     
     def __getitem__(self, index):
         audio = self.get_audio(index)
         ctrl_label = self.get_ctrl_label(index)
         return {"idx": index, "audio": audio, "ctrl_label": ctrl_label}
 
-    # def num_tokens(self, index) -> int:
-    #     # 用来 order indices；
-    #     return self.audio_size_list[index]
+    def num_tokens(self, index) -> int:
+        # 用来 order indices；
+        return self.audio_size_list[index]
 
-    # def size_list(self):
-    #     # 用来 order indices，collate；
-    #     return self.audio_size_list
+    def size_list(self):
+        # 用来 order indices，collate；
+        return self.audio_size_list
 
 
 
@@ -357,14 +353,10 @@ def norm_decode(data: Union[torch.Tensor, np.ndarray], ori_max=None, ori_min=Non
 @dataclass
 class StaticFeatureDatasetConfig:
     # 为了能够直接初始化这些 conifg，所有的值如果确实没有默认值全部设置成 None；
-    
-    name_manifest_path: Optional[str] = None
-    static_feature_dir: Optional[str] = None
-    ctrl_label_dir: Optional[str] = None
-    
-    # static_audio_feature_manifest_or_list: Optional[str] = None
-    # ctrl_manifest_or_list: Optional[str] = None
-
+    static_audio_feature_manifest_or_list: Optional[str] = None
+    ctrl_manifest_or_list: Optional[str] = None
+    feature_rate: Optional[int] = None
+    label_rate: Optional[int] = None
     max_keep_feature_size: Optional[int] = None
     min_keep_feature_size: Optional[int] = None
     
@@ -404,35 +396,48 @@ class StaticFeatureDataset(Dataset):
 
     def __init__(
         self,
-        name_manifest_path: Optional[str] = None,
-        static_feature_dir: Optional[str] = None,
-        ctrl_label_dir: Optional[str] = None,
+        static_audio_feature_manifest_or_list: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
+        ctrl_manifest_or_list: Union[str, Path, List[Union[str, Path]]] = None,
+        feature_rate: Optional[int] = 50,
+        label_rate: Optional[int] = 60, 
         max_keep_feature_size: Optional[int] = None,
         min_keep_feature_size: Optional[int] = None, 
-        align_length: bool = True,
-        static_feature_suffix: str = ".pt",
-        ctrl_label_suffix: str = ".pt"
+        align_length: bool = True
     ):
-        self.names = load_data_directly(name_manifest_path)
-        self.static_feature_dir = Path(static_feature_dir)
-        self.ctrl_label_dir = Path(ctrl_label_dir)
 
+        self.audio_feature_path_list, self.audio_feature_size_list = load_sequence_data(manifest_or_list=static_audio_feature_manifest_or_list,
+                                                                max_keep_sample_size=max_keep_feature_size, min_keep_sample_size=min_keep_feature_size)
+        self.ctrl_path_list, self.ctrl_size_list = load_sequence_data(manifest_or_list=ctrl_manifest_or_list)
+
+        self.need_resample = False
+        if feature_rate is not None and label_rate is not None:
+            # TODO 这里我们先实验简单的做法，例如插值方法，默认要么提前使用 resample_feature_from_50_to_60 插值好，或者 feature rate 只能是 50；
+            if feature_rate != label_rate:
+                assert feature_rate == 50 and label_rate == 60
+                self.need_resample = True
+
+            verify_label_lengths(audio_size_list=self.audio_feature_size_list, audio_path_list=self.audio_feature_path_list, ctrl_size_list=self.ctrl_size_list, 
+                                 ctrl_path_list=self.ctrl_path_list, sample_rate=feature_rate, label_rate=label_rate, tol=1)  # TODO 这里有个问题就是部分控制器标签的长度看起来和实际的音频长度不对等；
+        
+        self.static_audio_feature_manifest_or_list = static_audio_feature_manifest_or_list
+        self.ctrl_manifest_or_list = ctrl_manifest_or_list
+        self.feature_rate = feature_rate
+        self.label_rate = label_rate
         self.max_keep_feature_size = max_keep_feature_size
         self.min_keep_feature_size = min_keep_feature_size
         self.align_length = align_length
 
-        self.static_feature_suffix = static_feature_suffix
-        self.ctrl_label_suffix = ctrl_label_suffix
-
     def get_audio_feature(self, index):
-        feature = torch.load(self.static_feature_dir.joinpath(self.names[index]+self.static_feature_suffix))
+        feature = torch.load(self.audio_feature_path_list[index])
+        if self.need_resample:
+            feature = resample_feature_from_50_to_60(feature)
         return feature
 
     def get_ctrl_label(self, index):
-        return torch.load(self.ctrl_label_dir.joinpath(self.names[index]+self.ctrl_label_suffix))
+        return torch.load(self.ctrl_path_list[index])
     
     def __len__(self):
-        return len(self.names)
+        return len(self.audio_feature_path_list)
     
     def __getitem__(self, index):
         audio_feature = self.get_audio_feature(index)
@@ -446,19 +451,25 @@ class StaticFeatureDataset(Dataset):
 
         return {"idx": index, "audio_feature": audio_feature, "ctrl_label": ctrl_label}
 
+    def num_tokens(self, index) -> int:
+        # 用来 order indices；
+        return self.audio_feature_size_list[index]
+
+    def size_list(self):
+        # 用来 order indices，collate；
+        return self.audio_feature_size_list
+
 
 class PhnDataset(Dataset):
-    def __init__(self, name_manifest_path: Optional[str] = None, phn_dir: Optional[str] = None, suffix: str = ".pt") -> None:
-        self.names = load_data_directly(name_manifest_path)
-        self.phn_dir = Path(phn_dir)
-        self.suffix = suffix
+    def __init__(self, phn_manifest_path) -> None:
+        self.phn_path_list, _ = load_sequence_data(phn_manifest_path, load_length=False)
 
     def __len__(self) -> int:
-        return len(self.names)
+        return len(self.phn_path_list)
     
     def __getitem__(self, index):
         return {
-            "phn_dict": torch.load(self.phn_dir.joinpath(self.names[index]+self.suffix))
+            "phn_dict": torch.load(self.phn_path_list[index])
         }
 
 
@@ -975,7 +986,6 @@ def pad_phn_fn(
 
 
 
-
 class AudioOnlyCollater:
     def __init__(
         self,
@@ -1030,7 +1040,7 @@ class AudioOnlyCollater:
 
 
 
-# 注意这里我们使用的音频是根据 ctrl label 的长度重新插值过的，因此这里根据音频的长度对标签进行切割也问题不大；
+
 class RawAudioCollater:
 
     """
@@ -1056,12 +1066,10 @@ class RawAudioCollater:
 
         self.s2f = label_rate / sample_rate
 
-        logger.info(f"RawAudioCollater is configured as: \n"
+        logger.info(f"StaticFeatureCollater is configured as: \n"
                     f"\tmax_feature_size: {max_sample_size},"
                     f"\tpad_feature: {pad_audio},"
-                    f"\trandom_crop: {random_crop},"
-                    f"\label_rate: {label_rate},"
-                    f"\sample_rate: {sample_rate},")
+                    f"\trandom_crop: {random_crop},")
 
 
     def __call__(self, batch):

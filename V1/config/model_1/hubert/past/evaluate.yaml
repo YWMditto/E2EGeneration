@@ -1,0 +1,9 @@
+StaticFeatureDatasetConfig:
+  # static_audio_feature_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_hubert_60_validate.txt"
+  # ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_normalized_extracted_ctrl_validate.txt"
+  static_audio_feature_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert_test_overfit_val_out.txt"
+  ctrl_manifest_or_list: "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/ctrl_test_overfit_val_out.txt"
+  feature_rate: 60
+  label_rate: 60
+  max_keep_feature_size:
+  min_keep_feature_size:

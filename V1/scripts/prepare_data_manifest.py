@@ -416,10 +416,112 @@ def prepare_many_manifest(feature_tuples):
         f.close()
 
 
+
+def filter_length_from_manifest(manifest_with_length_paths, other_manifest_paths, save_dir, length_diff_thres: int = 1):
+    
+    if manifest_with_length_paths is None or len(manifest_with_length_paths) <= 1:
+        return 
+
+    save_dir = Path(save_dir)
+    save_dir.mkdir(exist_ok=True, parents=True)
+
+
+    with_length_paths = []
+    total_length = None
+    for i in range(len(manifest_with_length_paths)):
+        cur_with_length_manifest_path = manifest_with_length_paths[i]
+        with open(cur_with_length_manifest_path, "r") as f:
+            cur_paths = []
+            for line in f:
+                _path, _length = line.rstrip().split("\t")
+                _length = int(_length)
+                cur_paths.append((_path, _length))
+        with_length_paths.append(cur_paths)
+
+        if total_length is None:
+            total_length = len(cur_paths)
+        else:
+            assert len(cur_paths) == total_length
+
+    other_paths = []
+    for i in range(len(other_manifest_paths)):
+        cur_other_manifest_path = other_manifest_paths[i]
+        with open(cur_other_manifest_path, "r") as f:
+            cur_paths = []
+            for line in f:
+                line = line.rstrip()
+                cur_paths.append(line)
+        other_paths.append(cur_paths)
+
+        assert len(cur_paths) == total_length
+
+
+    with_length_save_f_list = []    
+    for i in range(len(manifest_with_length_paths)):
+        cur_with_length_manifest_path = Path(manifest_with_length_paths[i])
+        cur_save_f = save_dir.joinpath(cur_with_length_manifest_path.name)
+        cur_save_f = open(cur_save_f, "w")
+        with_length_save_f_list.append(cur_save_f)
+    
+    other_save_f_list = []
+    for i in range(len(other_manifest_paths)):
+        cur_other_manifest_path = Path(other_manifest_paths[i])
+        cur_save_f = save_dir.joinpath(cur_other_manifest_path.name)
+        cur_save_f = open(cur_save_f, "w")
+        other_save_f_list.append(cur_save_f)
+
+
+    for i in range(total_length):
+        should_save = True
+        cur_length = None
+        for j in range(len(with_length_paths)):
+            cur_with_length_path, length = with_length_paths[j][i]
+            if cur_length is None:
+                cur_length = length
+            else:
+                if abs(cur_length - length) > length_diff_thres:
+                    should_save = False
+        
+        if should_save:
+            for j in range(len(with_length_paths)):
+                line = with_length_paths[j][i][0] + "\t" + str(with_length_paths[j][i][1])
+                print(line, file=with_length_save_f_list[j])
+            
+            for j in range(len(other_paths)):
+                line = other_paths[j][i]
+                print(line, file=other_save_f_list[j])
+
+    for f in with_length_save_f_list + other_save_f_list:
+        f.close()
+            
+
+
+def expand_manifest(filepath, save_path, repeat_times=2):
+    save_path = Path(save_path)
+    data_f = open(save_path, "w")
+    with open(filepath) as f:
+        data = []
+        for line in f:
+            data.append(line.rstrip())
+
+    for i in range(repeat_times):
+        for line in data:
+            print(line, file=data_f)
+
+    data_f.close()
+
+
+
+
+
+
+
+
+
 if __name__ == "__main__":
     # prepare_wav_manifest(
-    #     path_dirs="/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_audios",
-    #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/wav.txt"
+    #     path_dirs="/data/lipsync/xgyang/e2e_data/aligned_audios",
+    #     save_path="/data/lipsync/xgyang/e2e_data/static_feature/aligned_audios_manifest.txt"
     # )
 
     # resample_audios(
@@ -478,34 +580,71 @@ if __name__ == "__main__":
     #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_phn_validate.txt"
     # )
 
-    prepare_many_manifest(
-        [
-            (
-                "/data/lipsync/xgyang/e2e_data/static_feature/hubert_60",
-                "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_hubert_60.txt",
-                ".+\.pt",
-                True
-            ),
-            (
-                "/data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels",
-                "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_normalized_extracted_ctrl.txt",
-                ".+\.pt",
-                True
-            ),
-            (
-                "/data/lipsync/xgyang/e2e_data/phoneme",
-                "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_phn_60.txt",
-                ".+\.pt",
-                False
-            )
-        ]
-    )
+    # prepare_many_manifest(
+    #     [
+    #         (
+    #             "/data/lipsync/xgyang/e2e_data/static_feature/hubert_60",
+    #             "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_hubert_60.txt",
+    #             ".+\.pt",
+    #             True
+    #         ),
+    #         (
+    #             "/data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels",
+    #             "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_normalized_extracted_ctrl.txt",
+    #             ".+\.pt",
+    #             True
+    #         ),
+    #         (
+    #             "/data/lipsync/xgyang/e2e_data/phoneme",
+    #             "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_phn_60.txt",
+    #             ".+\.pt",
+    #             False
+    #         )
+    #     ]
+    # )
 
-    split_validate_many_feature(
-        [
-            "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_hubert_60.txt",
-            "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_normalized_extracted_ctrl.txt",
-            "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_phn_60.txt"
-        ],
-        validate_p=30
-    )
+    # split_validate_many_feature(
+    #     [
+    #         "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_hubert_60.txt",
+    #         "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_normalized_extracted_ctrl.txt",
+    #         "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_phn_60.txt"
+    #     ],
+    #     validate_p=30
+    # )
+
+
+    # length_diff_thres = 1 
+    # filter_length_from_manifest(
+    #     manifest_with_length_paths=[
+    #         "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_hubert_60_train.txt",
+    #         "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_normalized_extracted_ctrl_train.txt",
+    #     ],
+    #     other_manifest_paths=[
+    #         "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi_phn_60_train.txt"
+    #     ],
+    #     save_dir=f"/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_{length_diff_thres}",
+    #     length_diff_thres=length_diff_thres
+    # )
+
+
+
+    # expand_manifest(
+    #     filepath="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_1/lumi_hubert_60_train.txt",
+    #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_1/lumi_hubert_60_train_repeat.txt",
+    #     repeat_times=20
+    # )
+
+    # expand_manifest(
+    #     filepath="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_1/lumi_normalized_extracted_ctrl_train.txt",
+    #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_1/lumi_normalized_extracted_ctrl_train_repeat.txt",
+    #     repeat_times=20
+    # )
+
+    # expand_manifest(
+    #     filepath="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_1/lumi_phn_60_train.txt",
+    #     save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/after_filter_1/lumi_phn_60_train_repeat.txt",
+    #     repeat_times=20
+    # )
+
+
+

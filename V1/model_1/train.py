@@ -69,17 +69,25 @@ class CheckpointConfig:
 @dataclass
 class PhnEmbeddingConfig:
     add_phn: bool = False
-    train_phn_manifest_path: Optional[str] = None
-    validate_phn_manifest_path: Optional[str] = None
+    phn_dir: Optional[str] = None
     phn_num: Optional[int] = None
     phn_padding_idx: Optional[int] = None
     phn_directly_pad: bool = True
     phn_flatten_pad: bool = True
 
+    phn_layer_num: int = 6
+    phn_head_num: int = 1
+    phn_head_dim: int = 64
+    phn_conv1d_filter_size: int = 1536
+    phn_conv1d_kernel_size: int = 3
+    # encoder_output_size: 384
+    phn_dropout_p: float = 0.1
+    phn_dropatt_p: float = 0.1
+    phn_dropemb_p: float = 0.0
+
 
 @dataclass
 class TrainingConfig:
-
     
     load_checkpoint_path: Optional[str] = None
     resume_training: bool = False
@@ -101,11 +109,15 @@ class TrainingConfig:
     eye_head_lr: float = 5e-4
     min_lr: float = 1e-5  # TODO 实现控制所有 lr scheduler，现在只控制 LambdaLR；
 
+    learn_mouth: bool = True
+    learn_eye: bool = False
+
     weight_decay: float = 1e-5
     epoch_milestones: List[int] = field(default_factory=lambda: [12, 40, 70])
-    gamma: float = 0.5
+    gamma: float = 0.2
 
-    warmup_epochs: int = 8
+    warmup_epochs: Optional[int] = None
+    warmup_steps: Optional[int] = None
     n_epochs: int = 100
 
     val_check_interval: Optional[int] = None
@@ -125,6 +137,9 @@ class TrainingConfig:
     phn_embedding_config: PhnEmbeddingConfig = PhnEmbeddingConfig()
 
 
+    def __post_init__(self):
+        assert self.warmup_epochs is None or self.warmup_steps is None
+
 
 @dataclass
 class UsedDatasetConfig:
@@ -134,10 +149,6 @@ class UsedDatasetConfig:
 
 def train():
 
-    """
-    3. evaluate
-    5. more lr scheduler
-    """
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path")
     args = parser.parse_args()
@@ -156,15 +167,14 @@ def train():
     pl.seed_everything(training_config.seed)
 
     train_static_feature_dataset = StaticFeatureDataset(
-        static_audio_feature_manifest_or_list=train_static_feature_dataset_config.static_audio_feature_manifest_or_list,
-        ctrl_manifest_or_list=train_static_feature_dataset_config.ctrl_manifest_or_list,
-        feature_rate=train_static_feature_dataset_config.feature_rate,
-        label_rate=train_static_feature_dataset_config.label_rate,
+        name_manifest_path=train_static_feature_dataset_config.name_manifest_path,
+        static_feature_dir=train_static_feature_dataset_config.static_feature_dir,
+        ctrl_label_dir=train_static_feature_dataset_config.ctrl_label_dir,
         max_keep_feature_size=train_static_feature_dataset_config.max_keep_feature_size,
         min_keep_feature_size=train_static_feature_dataset_config.min_keep_feature_size
     )
     if phn_embedding_config.add_phn:
-        train_phn_dataset = PhnDataset(phn_manifest_path=phn_embedding_config.train_phn_manifest_path)
+        train_phn_dataset = PhnDataset(name_manifest_path=train_static_feature_dataset_config.name_manifest_path, phn_dir=phn_embedding_config.phn_dir)
         train_static_feature_dataset = CombinedFeatureDataset(train_static_feature_dataset, train_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
 
     train_collate_fn = StaticFeatureCollater(
@@ -195,15 +205,14 @@ def train():
                                       num_workers=training_config.num_workers)
 
     validate_static_feature_dataset = StaticFeatureDataset(
-        static_audio_feature_manifest_or_list=validate_static_feature_dataset_config.static_audio_feature_manifest_or_list,
-        ctrl_manifest_or_list=validate_static_feature_dataset_config.ctrl_manifest_or_list,
-        feature_rate=validate_static_feature_dataset_config.feature_rate,
-        label_rate=validate_static_feature_dataset_config.label_rate,
+        name_manifest_path=validate_static_feature_dataset_config.name_manifest_path,
+        static_feature_dir=validate_static_feature_dataset_config.static_feature_dir,
+        ctrl_label_dir=validate_static_feature_dataset_config.ctrl_label_dir,
         max_keep_feature_size=validate_static_feature_dataset_config.max_keep_feature_size,
         min_keep_feature_size=validate_static_feature_dataset_config.min_keep_feature_size
     )
     if phn_embedding_config.add_phn:
-        validate_phn_dataset = PhnDataset(phn_manifest_path=phn_embedding_config.validate_phn_manifest_path)
+        validate_phn_dataset = PhnDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, phn_dir=phn_embedding_config.phn_dir)
         validate_static_feature_dataset = CombinedFeatureDataset(validate_static_feature_dataset, validate_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
     validate_dataloader = DataLoader(dataset=validate_static_feature_dataset, batch_size=training_config.batch_size, shuffle=False, collate_fn=train_collate_fn, num_workers=training_config.num_workers)
 
@@ -239,14 +248,15 @@ def train():
         callbacks=callbacks,
         val_check_interval=training_config.val_check_interval,
         check_val_every_n_epoch=training_config.check_val_every_n_epoch,
-        gradient_clip_val=training_config.gradient_clip_val
+        gradient_clip_val=training_config.gradient_clip_val,
+        enable_checkpointing=training_config.checkpoint_config.save_checkpoint
     )
 
     trainer.fit(
         model=model1_pl,
         train_dataloaders=train_dataloader,
         val_dataloaders=validate_dataloader,
-        ckpt_path=training_config.load_checkpoint_path if training_config.resume_training else None
+        ckpt_path=training_config.load_checkpoint_path if training_config.resume_training else None,
     )
 
 

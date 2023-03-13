@@ -86,9 +86,18 @@ if __name__ == "__main__":
     # )
 
     transform_pt2npy_dir(
-        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=99-step=79800-validate_loss=0.11",
-        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/v1/epoch=99-step=79800-validate_loss=0.11_npy"
+        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/ser_hubert/layer16/all_v1/epoch=48-step=39000-validate_loss=0.1128",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/ser_hubert/layer16/all_v1/epoch=48-step=39000-validate_loss=0.1128_npy"
     )
+
+
+
+    # transform_pt2npy(
+    #     [
+    #         "/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_lumi05/daodao_000012-neutral.pt",
+    #     ],
+    #     "/data/lipsync/xgyang/E2EGeneration/tmp_dir/maya_generation"
+    # )
 
 
 

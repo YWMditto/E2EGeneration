@@ -1,0 +1,82 @@
+
+
+UsedDatasetConfig:
+  train_dataset_config: 
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_train.txt
+    static_feature_dir: /data/lipsync/xgyang/e2e_data/static_feature/hubert_60
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    max_keep_feature_size:
+    min_keep_feature_size:
+  validate_dataset_config:
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_validate.txt
+    static_feature_dir: /data/lipsync/xgyang/e2e_data/static_feature/hubert_60
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    max_keep_feature_size:
+    min_keep_feature_size:
+
+TrainingConfig:
+  # weight_decay: 0.
+  gradient_clip_val:
+  n_epochs: 1000
+  devices: [2]  #!
+  epoch_milestones: [200, 500]
+  warmup_epochs: 20
+  check_val_every_n_epoch: 
+  val_check_interval: 750
+  checkpoint_config:
+    save_checkpoint: True
+    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/v3" #!
+    checkpoint_sub_name: "{epoch}-{step}-{validate_loss:.4f}"
+    monitor: "validate_loss"
+    save_last: True
+    save_top_k: 2
+    save_weights_only: False
+    mode: "min"
+    every_n_epochs: 1
+    every_n_train_steps: 
+    save_on_train_epoch_end: False
+  loss_config:
+    use_wing_loss: True
+    use_l1_loss: True
+    wing_loss_weight: 1.
+    l1_loss_weight: 0.01
+    wing_loss_config:
+      omega: 10
+  phn_embedding_config:
+    add_phn: True
+    phn_dir: /data/lipsync/xgyang/e2e_data/aligned_phonemes
+    phn_num: 63
+    phn_padding_idx: 0
+    phn_directly_pad: True
+    phn_flatten_pad: False
+
+    phn_layer_num: 6
+    phn_head_num: 4
+    phn_head_dim: 96
+    phn_conv1d_filter_size: 1536
+    phn_conv1d_kernel_size: 3
+    phn_dropout_p: 0.1
+    phn_dropatt_p: 0.1
+    phn_dropemb_p: 0.0
+    
+Model1Config:
+  pre_lnorm: True
+  encoder_layer_num: 6
+  encoder_head_num: 4
+  encoder_head_dim: 96
+  encoder_conv1d_filter_size: 1536
+  encoder_conv1d_kernel_size: 3
+  encoder_dropout_p: 0.1
+  encoder_dropatt_p: 0.1
+  encoder_dropemb_p: 0.0
+
+  mouth_decoder_layer_num: 5
+  mouth_decoder_head_num: 4
+  mouth_decoder_head_dim: 96
+  mouth_decoder_conv1d_filter_size: 1536
+  mouth_decoder_conv1d_kernel_size: 3
+  mouth_decoder_dropout_p: 0.1
+  mouth_decoder_dropatt_p: 0.1
+  mouth_decoder_dropemb_p: 0.0
+
+

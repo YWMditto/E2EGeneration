@@ -1,0 +1,6 @@
+  StaticFeatureDatasetConfig:
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/neural/data_validate.txt
+    static_feature_dir: /data/lipsync/xgyang/e2e_data/static_feature/layer6/hubert_60
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    max_keep_feature_size:
+    min_keep_feature_size:

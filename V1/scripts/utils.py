@@ -11,6 +11,7 @@ from tqdm import tqdm
 from typing import Union, List, Sequence, Tuple, Dict
 import py3nvml.nvidia_smi as nvidia_smi
 import torch
+import numpy as np
 
 logger = logging.getLogger(__file__)
 
@@ -140,6 +141,21 @@ def move_data_to_device(batch, device, dtype=torch.Tensor):
         except:
             return batch
     return batch
+
+
+
+
+
+
+if __name__ == "__main__":
+
+    data = list(range(10))
+    new_data = align_length_with_directly_insert(
+        data=data,
+        tgt_length=12
+    )
+    
+    a = 1
 
 
 

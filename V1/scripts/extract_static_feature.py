@@ -59,6 +59,7 @@ class TransformersPretrainedModel:
         
         self.model_config = AutoConfig.from_pretrained(pretrained_model_or_path)
         self.model = AutoModel.from_pretrained(pretrained_model_or_path)
+        self.model.config.apply_spec_augment = False
 
         self.model.to(device)
         self.model.eval()
@@ -127,6 +128,7 @@ def extract_feature(audio_manifest_or_list, extract_feature_config: ExtractFeatu
 
                 outputs = model.forward(batch)
                 hidden_states = outputs.hidden_states[layer]
+                # hidden_states = outputs.last_hidden_state
                 frame_lengths = batch["frame_lengths"]
                 features = [cur_h[:jj].cpu() for cur_h in hidden_states for jj in frame_lengths]
 
@@ -198,51 +200,51 @@ def parallel_process(audio_manifest_or_list, extract_feature_config, devices: Li
 
 
 
-def hubert_extract():
-    audio_manifest_or_list = "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav_16000.txt"
+def hubert_extract(pretrained_model_or_path, layer, save_root_dir, devices):
+    audio_manifest_or_list = "/data/lipsync/xgyang/e2e_data/static_feature/aligned_audios_manifest.txt"
     extract_feature_config = ExtractFeatureConfig(
-        pretrained_model_or_path="TencentGameMate/chinese-hubert-large",
+        pretrained_model_or_path=pretrained_model_or_path,
         one_batch_total_tokens=2000000,
-        save_root_dir="/data/lipsync/xgyang/e2e_data/static_feature/hubert_50",
-        layer=24
+        save_root_dir=save_root_dir,
+        layer=layer
     )
     parallel_process(
         audio_manifest_or_list=audio_manifest_or_list,
         extract_feature_config=extract_feature_config,
-        devices=[0, 1, 2, 3, 4, 5],
-        num_replicas=6,
+        devices=devices,
+        num_replicas=len(devices),
         tasks=None
     )
 
-def wavlm_extract():
-    audio_manifest_or_list = "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav_16000.txt"
+def wavlm_extract(layer, save_root_dir, devices):
+    audio_manifest_or_list = "/data/lipsync/xgyang/e2e_data/static_feature/aligned_audios_manifest.txt"
     extract_feature_config = ExtractFeatureConfig(
         pretrained_model_or_path="/data/lipsync/xgyang/WavLM/wavlm_pretrained_ckpt/wavlm_cn_large_ckpt_path",
         one_batch_total_tokens=2000000,
-        save_root_dir="/data/lipsync/xgyang/e2e_data/static_feature/wavlm_50",
-        layer=24
+        save_root_dir=save_root_dir,
+        layer=layer
     )
     parallel_process(
         audio_manifest_or_list=audio_manifest_or_list,
         extract_feature_config=extract_feature_config,
-        devices=[0, 1, 2, 3, 4, 5],
-        num_replicas=6,
+        devices=devices,
+        num_replicas=len(devices),
         tasks=None
     )
 
-def wav2vec2_extract():
-    audio_manifest_or_list = "/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_wav_16000.txt"
+def wav2vec2_extract(layer, save_root_dir, devices):
+    audio_manifest_or_list = "/data/lipsync/xgyang/e2e_data/static_feature/aligned_audios_manifest.txt"
     extract_feature_config = ExtractFeatureConfig(
         pretrained_model_or_path="TencentGameMate/chinese-wav2vec2-large",
         one_batch_total_tokens=2000000,
-        save_root_dir="/data/lipsync/xgyang/e2e_data/static_feature/wav2vec2_50",
-        layer=24
+        save_root_dir=save_root_dir,
+        layer=layer
     )
     parallel_process(
         audio_manifest_or_list=audio_manifest_or_list,
         extract_feature_config=extract_feature_config,
-        devices=[0, 1, 2, 3, 4, 5],
-        num_replicas=6,
+        devices=devices,
+        num_replicas=len(devices),
         tasks=None
     )
 
@@ -302,6 +304,21 @@ def resample_feature(feature_manifest_path, manifest_save_path, new_feature_save
 
 
 
+def _extract_state_dict_from_ser_hubert(ckpt_dir, save_dir):
+
+    ckpt_dir = Path(ckpt_dir)
+
+    model_state_dict = torch.load(ckpt_dir.joinpath("pytorch_model.bin"))
+
+
+    hubert_model = HubertModel.from_pretrained(ckpt_dir)
+
+    a = 1
+
+
+
+
+
 
 
 
@@ -312,9 +329,14 @@ if __name__ == "__main__":
     # set_start_method("spawn", force=True)
     # set_sharing_strategy('file_system')
 
-    # hubert_extract()
-    # wavlm_extract()
-    # wav2vec2_extract()
+    hubert_extract(
+        "/data/lipsync/xgyang/E2EGeneration/ser_dir/hubert-large-CN-14-emotions-corrected-1028/checkpoint-17700",
+        24, 
+        "/data/lipsync/xgyang/e2e_data/static_feature/ser_hubert/50/layer24", 
+        [3,4,5,6,7]
+    )
+    # wavlm_extract(6, "/data/lipsync/xgyang/e2e_data/static_feature/layer6/wavlm_50", [5,6,7])
+    # wav2vec2_extract(6, "/data/lipsync/xgyang/e2e_data/static_feature/layer6/wav2vec2_50", [5,6,7])
 
     # resample_feature(
     #     feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_hubert_50.txt",
@@ -322,20 +344,24 @@ if __name__ == "__main__":
     #     new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/hubert_60"
     # )
 
-    resample_feature(
-        feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_50.txt",
-        manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_60.txt",
-        new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/wavlm_60"
-    )
+    # resample_feature(
+    #     feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_50.txt",
+    #     manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wavlm_60.txt",
+    #     new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/wavlm_60"
+    # )
 
-    resample_feature(
-        feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_50.txt",
-        manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_60.txt",
-        new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/wav2vec2_60"
-    )
+    # resample_feature(
+    #     feature_manifest_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_50.txt",
+    #     manifest_save_path="/data/lipsync/xgyang/E2EGeneration/V1/cache_dir/lumi05_feature_wav2vec2_60.txt",
+    #     new_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/wav2vec2_60"
+    # )
 
 
 
+    # _extract_state_dict_from_ser_hubert(
+    #     ckpt_dir="/data/lipsync/xgyang/E2EGeneration/ser_dir/hubert-large-CN-14-emotions-corrected-1028/checkpoint-17700",
+    #     save_dir="/data/lipsync/xgyang/E2EGeneration/ser_dir/extracted_direct_hubert/hubert_large_1"
+    # )
 
 
 
