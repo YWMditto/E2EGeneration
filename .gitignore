@@ -11,6 +11,9 @@ V1/lightning_logs
 V1/checkpoint_dir
 V1/tmp_dir/
 
+V1/emotion_training/checkpoint_dir
+V1/emotion_training/lightning_logs
+
 !scripts/
 !scripts/*
 
@@ -22,7 +25,8 @@ V1/tmp_dir/
 !config/*
 
 **/__pycache__
-
+**/checkpoint_dir
+**/lightning_logs
 
 
 
