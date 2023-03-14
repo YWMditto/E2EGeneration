@@ -90,10 +90,13 @@ class Model1PL(pl.LightningModule):
         if mouth_l1_loss_record is not None:
             loss_dict["mouth_l1_loss"] = mouth_l1_loss_record[0] / mouth_l1_loss_record[1]
 
-
         eye_wing_loss_record = loss_dict.pop("eye_wing_loss_record")
         if eye_wing_loss_record is not None:
             loss_dict["eye_wing_loss"] = eye_wing_loss_record[0] / eye_wing_loss_record[1]
+
+        pca_l1_loss_record = loss_dict.pop("pca_l1_loss_record")
+        if pca_l1_loss_record is not None:
+            loss_dict["pca_l1_loss"] = pca_l1_loss_record[0] / pca_l1_loss_record[1]
         
         if self.use_wandb:
             loss_dict["loss"] = loss.item()
@@ -130,8 +133,6 @@ class Model1PL(pl.LightningModule):
                 param_group['lr'] = lr_scale * self.training_config.base_lr
 
 
-
-
     # # past
     # def validation_step(self, batch, batch_idx):
     #     collated_ctrl_labels = batch["ctrl_labels"]
@@ -155,33 +156,50 @@ class Model1PL(pl.LightningModule):
         mouth_l1_loss_record = loss_dict["mouth_l1_loss_record"]
 
         eye_wing_loss_record = loss_dict["eye_wing_loss_record"]
-        return [mouth_wing_loss_record, eye_wing_loss_record, mouth_l1_loss_record]
+
+        pca_l1_loss_record = loss_dict["pca_l1_loss_record"]
+        return [mouth_wing_loss_record, eye_wing_loss_record, mouth_l1_loss_record, pca_l1_loss_record]
     
     def validation_epoch_end(self, outputs) -> None:
         
-        mouth_wing_loss_records, eye_wing_loss_records, mouth_l1_loss_records = list(zip(*outputs))
+        mouth_wing_loss_records, eye_wing_loss_records, mouth_l1_loss_records, pca_l1_loss_records = list(zip(*outputs))
 
-        mouth_wing_validate_loss = 0.
+        logger_info = ""
+        loss_dict = {}
+        validate_loss = 0.
         if mouth_wing_loss_records[0] is not None:
             mouth_wing_losses, mouth_wing_loss_num = list(zip(*mouth_wing_loss_records))
             mouth_wing_validate_loss = sum(mouth_wing_losses) / (sum(mouth_wing_loss_num))
+            loss_dict["mouth_wing_validate_loss"] = mouth_wing_validate_loss
+            validate_loss += mouth_wing_validate_loss
+            logger_info += f"\tmouth_wing_validate_loss: {mouth_wing_validate_loss}"
         
-        mouth_l1_validate_loss = 0.
         if mouth_l1_loss_records[0] is not None:
             mouth_l1_losses, mouth_l1_loss_num = list(zip(*mouth_l1_loss_records))
             mouth_l1_validate_loss = sum(mouth_l1_losses) / (sum(mouth_l1_loss_num))
+            loss_dict["mouth_l1_validate_loss"] = mouth_l1_validate_loss
+            validate_loss += mouth_l1_validate_loss
+            logger_info += f"\tmouth_l1_validate_loss: {mouth_l1_validate_loss}"
 
-        eye_wing_validate_loss = 0.
-        if eye_wing_loss_records[0] is not None:
-            eye_wing_losses, eye_wing_loss_num = list(zip(*eye_wing_loss_records))
-            eye_wing_validate_loss = sum(eye_wing_losses) / (sum(eye_wing_loss_num))
+        # eye_wing_validate_loss = 0.
+        # if eye_wing_loss_records[0] is not None:
+        #     eye_wing_losses, eye_wing_loss_num = list(zip(*eye_wing_loss_records))
+        #     eye_wing_validate_loss = sum(eye_wing_losses) / (sum(eye_wing_loss_num))
 
-        loss_dict = {"validate_loss": mouth_wing_validate_loss + eye_wing_validate_loss + mouth_l1_validate_loss, "mouth_wing_validate_loss": mouth_wing_validate_loss, "mouth_l1_validate_loss": mouth_l1_validate_loss, "eye_wing_validate_loss": eye_wing_validate_loss}
+        if pca_l1_loss_records[0] is not None:
+            pca_l1_losses, pca_l1_loss_num = list(zip(*pca_l1_loss_records))
+            pca_l1_validate_loss = sum(pca_l1_losses) / (sum(pca_l1_loss_num))
+            loss_dict["pca_l1_validate_loss"] = pca_l1_validate_loss
+            validate_loss += pca_l1_validate_loss
+            logger_info += f"\tpca_l1_validate_loss: {pca_l1_validate_loss}"
+
+        logger_info = f"validate: validate_loss: {validate_loss}" + logger_info 
+        loss_dict["validate_loss"] = validate_loss
         if self.use_wandb:
             wandb.log(loss_dict)
         else:
             self.log_dict(loss_dict, prog_bar=False)
-        logger.info(f"validate: mouth wing / eye wing validate loss: {mouth_wing_validate_loss} / {eye_wing_validate_loss}, mouth_l1_validate_loss: {mouth_l1_validate_loss}.")
+        logger.info(logger_info)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(

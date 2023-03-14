@@ -1,0 +1,35 @@
+
+
+UsedDatasetConfig:
+  train_dataset_config: 
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_train.txt
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    emotion_label_dir: /data/lipsync/xgyang/e2e_data/emotions
+  validate_dataset_config:
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_validate.txt
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    emotion_label_dir: /data/lipsync/xgyang/e2e_data/emotions
+
+TrainingConfig:
+  gradient_clip_val:
+  n_epochs: 100
+  devices: [0]
+  warmup_epochs: 20
+  check_val_every_n_epoch: 1 
+  val_check_interval: 
+  checkpoint_config:
+    save_checkpoint: False
+    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/emotion_training/checkpoint_dir/v1"
+    checkpoint_sub_name: "{epoch}-{step}-{validate_acc:.4f}"
+    monitor: "validate_acc"
+    save_last: True
+    save_top_k: 2
+    save_weights_only: False
+    mode: "max"
+    every_n_epochs: 1
+    every_n_train_steps: 
+    save_on_train_epoch_end: False
+    
+EmotionClassifierConfig:
+  temp: 1.
+  label_smoothing: 0.2

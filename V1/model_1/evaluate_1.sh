@@ -42,11 +42,11 @@
 
 
 python /data/lipsync/xgyang/E2EGeneration/V1/model_1/evaluate.py \
-    --pl_ckpt_path /data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/ser_hubert/layer16/all_v1/epoch=48-step=39000-validate_loss=0.1128.ckpt \
-    --train_config_path /data/lipsync/xgyang/E2EGeneration/V1/config/model_1/ser_hubert/layer16/all_v1.yaml \
+    --pl_ckpt_path /data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/hubert_layer6/all_emotion_v1/epoch=24-step=11250-mouth_l1_validate_loss=0.0885.ckpt \
+    --train_config_path /data/lipsync/xgyang/E2EGeneration/V1/config/model_1/hubert_layer6/all_emotion_v1.yaml \
     --eval_name_manifest_path /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_validate.txt \
-    --eval_static_feature_dir  /data/lipsync/xgyang/e2e_data/static_feature/ser_hubert/60/layer16 \
+    --eval_static_feature_dir  /data/lipsync/xgyang/e2e_data/static_feature/layer6/hubert_60\
     --eval_ctrl_label_dir /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels \
     --lumi_template_path /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/static_file/lumi_template.pt \
-    --save_dir /data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/ser_hubert/layer16/all_v1 \
-    --device 0
+    --save_dir /data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/hubert/layer6/all_emotion_v1 \
+    --device 4

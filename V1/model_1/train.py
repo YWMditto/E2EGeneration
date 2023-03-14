@@ -33,7 +33,9 @@ from data_prepare import (
     ConstantTokenBatchSampler,
     PhnDataset,
     CombinedFeatureDataset,
-    static_feature_phn_post_proces_fn
+    static_feature_phn_post_proces_fn,
+    NewFeatureDataset,
+    check_feature_length_post_process_fn
 )
 
 from model_1 import (
@@ -53,7 +55,6 @@ class CheckpointConfig:
     save_checkpoint: bool = False
     checkpoint_dir: Optional[str] = None
     checkpoint_sub_name: Optional[str] = None
-
 
     monitor: Optional[str] = None
     save_last: bool = True
@@ -86,6 +87,36 @@ class PhnEmbeddingConfig:
     phn_dropemb_p: float = 0.0
 
 
+# 和 phn embedding config 一样；
+@dataclass
+class PcaConfig:
+    """
+    根据输出的标签控制器的值来预测 pca 值；
+
+    这里需要有一个特殊处理的地方在于，如果没有学 mouth 或者 eye，那么对应部分需要使用 golden label 来进行替换；
+    
+    """
+
+    learn_pca: bool = False
+    pca_label_dir: Optional[str] = None
+    n_pca_channels: int = 134
+
+
+@dataclass
+class EmotionConfig:
+    """
+    该 config 包含 emotion embedding config 和 emotion prediction task config；
+    
+    """
+
+    add_emotion_embedding: bool = False
+
+    emotion_num: int = 18  #  17 + pad(0)
+    emotion_feature_dir: Optional[str] = None
+
+
+
+
 @dataclass
 class TrainingConfig:
     
@@ -111,6 +142,7 @@ class TrainingConfig:
 
     learn_mouth: bool = True
     learn_eye: bool = False
+    learn_pca: bool = False
 
     weight_decay: float = 1e-5
     epoch_milestones: List[int] = field(default_factory=lambda: [12, 40, 70])
@@ -124,18 +156,16 @@ class TrainingConfig:
     check_val_every_n_epoch: int = 1
 
     gradient_accumulation_step: int = 1
-
     gradient_clip_val: Optional[float] = None
-
     devices: List[int] = field(default_factory=lambda: [0])
-
     use_wandb: bool = False
     
     loss_config: LossConfig = LossConfig()
     checkpoint_config: CheckpointConfig = CheckpointConfig()
 
     phn_embedding_config: PhnEmbeddingConfig = PhnEmbeddingConfig()
-
+    pca_config: PcaConfig = PcaConfig()
+    emotion_config: EmotionConfig = EmotionConfig()
 
     def __post_init__(self):
         assert self.warmup_epochs is None or self.warmup_steps is None
@@ -159,7 +189,7 @@ def train():
     validate_static_feature_dataset_config: StaticFeatureDatasetConfig = used_dataset_config.validate_dataset_config
     model1_config: Model1Config = config_dict['Model1Config']
     training_config: TrainingConfig = config_dict['TrainingConfig']
-    phn_embedding_config = training_config.phn_embedding_config
+    
 
     for key, value in config_dict.items():
         logger.info(f"{key}:\n{value}")
@@ -173,9 +203,22 @@ def train():
         max_keep_feature_size=train_static_feature_dataset_config.max_keep_feature_size,
         min_keep_feature_size=train_static_feature_dataset_config.min_keep_feature_size
     )
+    train_phn_dataset = None
+    phn_embedding_config = training_config.phn_embedding_config
     if phn_embedding_config.add_phn:
         train_phn_dataset = PhnDataset(name_manifest_path=train_static_feature_dataset_config.name_manifest_path, phn_dir=phn_embedding_config.phn_dir)
-        train_static_feature_dataset = CombinedFeatureDataset(train_static_feature_dataset, train_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
+    train_pca_dataset = None
+    pca_config = training_config.pca_config
+    if pca_config.learn_pca:
+        train_pca_dataset = NewFeatureDataset(name_manifest_path=train_static_feature_dataset_config.name_manifest_path, feature_dir=pca_config.pca_label_dir, feature_name="pca_label")
+    
+    # TODO emotoin dataset 的形式之后可能会大改；
+    train_emotion_dataset = None
+    emotion_config = training_config.emotion_config
+    if emotion_config.add_emotion_embedding:
+        train_emotion_dataset = NewFeatureDataset(name_manifest_path=train_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_index")
+
+    train_static_feature_dataset = CombinedFeatureDataset(train_static_feature_dataset, train_phn_dataset, train_pca_dataset, train_emotion_dataset, post_process_fn=check_feature_length_post_process_fn)
 
     train_collate_fn = StaticFeatureCollater(
         max_feature_size=train_static_feature_dataset_config.max_feature_size,
@@ -187,22 +230,8 @@ def train():
         phn_padding_idx=phn_embedding_config.phn_padding_idx
     )
 
-    if training_config.use_constant_batch_sampler:
-        train_batch_sampler = ConstantTokenBatchSampler(
-            size_list=train_static_feature_dataset.size_list(),
-            one_batch_total_tokens=training_config.one_batch_total_tokens,
-            shuffle=training_config.shuffle,
-            num_buckets=5,
-            seed=training_config.seed,
-            dataset_name="static feature dataset",
-            num_replicas=len(training_config.devices),
-            rank=int(os.environ.get("LOCAL_RANK", 0)),
-            drop_last=True
-        )
-        train_dataloader = DataLoader(dataset=train_static_feature_dataset, batch_sampler=train_batch_sampler, collate_fn=train_collate_fn, num_workers=training_config.num_workers)
-    else:
-        train_dataloader = DataLoader(dataset=train_static_feature_dataset, batch_size=training_config.batch_size, shuffle=training_config.shuffle, collate_fn=train_collate_fn,
-                                      num_workers=training_config.num_workers)
+    train_dataloader = DataLoader(dataset=train_static_feature_dataset, batch_size=training_config.batch_size, shuffle=training_config.shuffle, collate_fn=train_collate_fn,
+                                    num_workers=training_config.num_workers)
 
     validate_static_feature_dataset = StaticFeatureDataset(
         name_manifest_path=validate_static_feature_dataset_config.name_manifest_path,
@@ -211,9 +240,17 @@ def train():
         max_keep_feature_size=validate_static_feature_dataset_config.max_keep_feature_size,
         min_keep_feature_size=validate_static_feature_dataset_config.min_keep_feature_size
     )
+    validate_phn_dataset = None
     if phn_embedding_config.add_phn:
         validate_phn_dataset = PhnDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, phn_dir=phn_embedding_config.phn_dir)
-        validate_static_feature_dataset = CombinedFeatureDataset(validate_static_feature_dataset, validate_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
+    validate_pca_dataset = None
+    if pca_config.learn_pca:
+        validate_pca_dataset = NewFeatureDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, feature_dir=pca_config.pca_label_dir, feature_name="pca_label")
+    validate_emotion_dataset = None
+    if emotion_config.add_emotion_embedding:
+        validate_emotion_dataset = NewFeatureDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_index")
+    
+    validate_static_feature_dataset = CombinedFeatureDataset(validate_static_feature_dataset, validate_phn_dataset, validate_pca_dataset, validate_emotion_dataset, post_process_fn=check_feature_length_post_process_fn)
     validate_dataloader = DataLoader(dataset=validate_static_feature_dataset, batch_size=training_config.batch_size, shuffle=False, collate_fn=train_collate_fn, num_workers=training_config.num_workers)
 
     model1_pl = Model1PL(model1_config, training_config, train_static_feature_dataset_config)

@@ -10,6 +10,7 @@
 
 import sys
 sys.path.append(".")
+sys.path.append("..")
 
 
 from pathlib import Path
@@ -106,6 +107,20 @@ def align_static_feature(ctrl_label_length_dict, feature_dir, aligned_feature_sa
             update(1)
 
 
+# pca 的长度和 ctrl label (lumi05) 的长度完全相同；
+def check_pca_label(ctrl_label_length_dict, pca_dir):
+    pca_dir = Path(pca_dir)
+
+    pca_paths = list(pca_dir.iterdir())
+    with _process_bar("check pca feature", total=len(pca_paths)) as update:
+        for path in pca_paths:
+            if path.stem in ctrl_label_length_dict:
+                pca_data = torch.load(path)
+                assert len(pca_data) == ctrl_label_length_dict[path.stem]
+            update(1)
+
+
+
 
 if __name__ == "__main__":
     # read_ctrl_label_lengths(
@@ -140,13 +155,16 @@ if __name__ == "__main__":
     #     aligned_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/layer6/wav2vec2_60"
     # )
 
-    align_static_feature(
+    # align_static_feature(
+    #     ctrl_label_length_dict=length_dict,
+    #     feature_dir="/data/lipsync/xgyang/e2e_data/static_feature/ser_hubert/50/layer24",
+    #     aligned_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/ser_hubert/60/layer24"
+    # )
+
+    check_pca_label(
         ctrl_label_length_dict=length_dict,
-        feature_dir="/data/lipsync/xgyang/e2e_data/static_feature/ser_hubert/50/layer24",
-        aligned_feature_save_dir="/data/lipsync/xgyang/e2e_data/static_feature/ser_hubert/60/layer24"
+        pca_dir="/data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_pca"
     )
-
-
 
 
 

@@ -373,11 +373,9 @@ class StaticFeatureDatasetConfig:
     lumi05_eye_without_R_ctrl_indices: List[int] = field(default_factory=lambda: LUMI05_EYE_WITHOUT_R_CTRL_INDICES)
 
     lumi05_mouth_L_ctrl_indices: List[int] = field(default_factory=lambda: LUMI05_MOUTH_L_CTRL_INDICES)
-
     lumi05_eye_L_ctrl_indices: List[int] = field(default_factory=lambda: LUMI05_EYE_L_CTRL_INDICES)
 
     lumi05_mouth_R_ctrl_indices: List[int] = field(default_factory=lambda: LUMI05_MOUTH_R_CTRL_INDICES)
-
     lumi05_eye_R_ctrl_indices: List[int] = field(default_factory=lambda: LUMI05_EYE_R_CTRL_INDICES)
 
     # collate config
@@ -463,6 +461,7 @@ class PhnDataset(Dataset):
 
 
 
+# TODO 现在我们会使用 align_feature_length.py 将所有特征的长度提前对齐到 ctrl labels（lumi），因此这一函数之后可以删除；
 def static_feature_phn_post_proces_fn(sample):
     audio_feature = sample["audio_feature"]
     ctrl_label = sample["ctrl_label"]
@@ -509,6 +508,63 @@ def static_feature_phn_post_proces_fn(sample):
     return sample
 
 
+def check_feature_length_post_process_fn(sample):
+
+    audio_feature = sample.get("audio_feature", None)
+    ctrl_label = sample.get("ctrl_label", None)
+    phn_dict = sample.get("phn_dict", None)
+    pca_label = sample.get("pca_label", None)
+
+    length = None
+    if audio_feature is not None:
+        length = len(audio_feature)
+    
+    if ctrl_label is not None:
+        if length is not None:
+            assert length == len(ctrl_label)
+        else:
+            length = len(ctrl_label)
+        
+    if phn_dict is not None:
+        total_length = phn_dict["total_length"]
+        if length is not None:
+            assert length == total_length
+        else:
+            length = total_length
+
+    if pca_label is not None:
+        if length is not None:
+            assert length == len(pca_label)
+        else:
+            raise RuntimeError
+    
+    return sample
+
+
+
+
+
+
+class NewFeatureDataset(Dataset):
+    """
+    用于实现快速加载任意特征的数据集类；
+    
+    """
+    def __init__(self, name_manifest_path: Optional[str] = None, feature_dir: Optional[str] = None, suffix: str = ".pt", feature_name: str = "new_feature") -> None:
+        self.names = load_data_directly(name_manifest_path)
+        self.feature_dir = Path(feature_dir)
+        self.suffix = suffix
+        self.feature_name = feature_name
+
+    def __len__(self) -> int:
+        return len(self.names)
+    
+    def __getitem__(self, index):
+        return {
+            self.feature_name: torch.load(self.feature_dir.joinpath(self.names[index]+self.suffix))
+        }
+
+
 class CombinedFeatureDataset(Dataset):
     """
     将多个已经初始化好的 dataset 融合在一起；
@@ -517,6 +573,7 @@ class CombinedFeatureDataset(Dataset):
     """
 
     def __init__(self, *datasets, post_process_fn: Optional[Callable]=None) -> None:
+        datasets = [w for w in datasets if w is not None]
 
         logger.info(f"一共横向合并 {len(datasets)} 个数据集.")
 
@@ -1291,6 +1348,21 @@ class StaticFeatureCollater:
                 feature_start_list=feature_start_list
             )
             collated_batch["phn_dict"] = padded_phn_dict
+
+        # pad pca, this should be exactly  same as ctrl labels;
+        if "pca_label" in sample_list[0]:
+            pca_label_list = [s["pca_label"] for s in sample_list]
+            collated_pca_labels, _, _ = directly_pad_feature_fn(
+                feature_list=pca_label_list,
+                feature_size=feature_size,
+                feature_start_list=feature_start_list
+            )
+            collated_batch["pca_labels"] = collated_pca_labels
+
+        if "emotion_index" in sample_list[0]:
+            emotion_indices = [s["emotion_index"] for s in sample_list]
+            emotion_indices = torch.LongTensor(emotion_indices)
+            collated_batch["emotion_indices"] = emotion_indices
 
         return collated_batch
 

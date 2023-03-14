@@ -36,6 +36,7 @@ class Model1Config:
     encoder_dropatt_p: float = 0.1
     encoder_dropemb_p: float = 0.0
 
+    # mouth
     mouth_decoder_layer_num: int = 5
     mouth_decoder_head_num: int = 1
     mouth_decoder_head_dim: int = 64
@@ -45,6 +46,7 @@ class Model1Config:
     mouth_decoder_dropatt_p: float = 0.1
     mouth_decoder_dropemb_p: float = 0.0
 
+    # eye
     eye_decoder_layer_num: int = 2
     eye_decoder_head_num: int = 2
     eye_decoder_head_dim: int = 64
@@ -55,6 +57,8 @@ class Model1Config:
     eye_decoder_dropemb_p: float = 0.0
 
     # phn config 在 training config 中进行设置；
+
+    # pca config 在 training config 中进行设置；
     
 
 
@@ -123,10 +127,7 @@ class Model1(nn.Module):
                 pre_lnorm=config.pre_lnorm
             )
             self.eye_head = nn.Linear(in_features=config.hidden_size, out_features=config.n_lumi_eye_channels)
-
-        # 注意如果之后开始使用预训练模型，那么需要注意随机初始化的位置；
-        self.apply(_init_weights)
-
+        
         # phn embedding
         phn_embedding_config=training_config.phn_embedding_config
         if phn_embedding_config.add_phn:
@@ -144,6 +145,25 @@ class Model1(nn.Module):
                 hidden_size=config.hidden_size,
                 padding_idx=phn_embedding_config.phn_padding_idx
             )
+
+        pca_config = training_config.pca_config
+        if pca_config.learn_pca:
+            self.pca_head = nn.Sequential(
+                nn.Linear(in_features=config.n_lumi_mouth_channels + config.n_lumi_eye_channels, out_features=pca_config.n_pca_channels),
+                nn.ReLU(),
+                nn.Linear(in_features=pca_config.n_pca_channels, out_features=pca_config.n_pca_channels)
+            )
+        
+        emotion_config = training_config.emotion_config
+        if emotion_config.add_emotion_embedding:
+            self.emotion_embedding = nn.Embedding(
+                num_embeddings=emotion_config.emotion_num,
+                embedding_dim=config.hidden_size,
+                padding_idx=0
+            )
+
+         # 注意如果之后开始使用预训练模型，那么需要注意随机初始化的位置；
+        self.apply(_init_weights)
 
         self.loss_config = training_config.loss_config
         self.wing_loss_config = self.loss_config.wing_loss_config
@@ -177,6 +197,14 @@ class Model1(nn.Module):
                     padding_mask=phn_dict["phn_padding_mask"],
                 )
                 mouth_encoder_hidden_states = mouth_encoder_hidden_states + phn_hidden_states
+            
+            if self.training_config.emotion_config.add_emotion_embedding:
+                # TODO 这里的输入形式之后可能会大改，为了加入 emotion prediction task；
+                emotion_indices = batch["emotion_indices"]  # [B]
+                emotion_embeddings = self.emotion_embedding(emotion_indices)  # [B, H]
+                emotion_embeddings = emotion_embeddings.unsqueeze(1).repeat(1, mouth_encoder_hidden_states.size(1), 1)
+                mouth_encoder_hidden_states = mouth_encoder_hidden_states + emotion_embeddings
+            
             mouth_decoder_hidden_states, _ = self.mouth_decoder(mouth_encoder_hidden_states, padding_mask=padding_mask)
 
         # eye decoder
@@ -219,6 +247,7 @@ class Model1(nn.Module):
             "label_ntokens": ntokens,
             "mouth_ctrl_labels": collated_mouth_ctrl_labels,
             "eye_ctrl_labels": collated_eye_ctrl_labels,
+            "ctrl_labels": collated_ctrl_labels
         }
 
         """
@@ -255,12 +284,28 @@ class Model1(nn.Module):
             eye_wing_loss, eye_wing_record_loss, eye_wing_record_num = self.wing_loss_fn(eye_ctrl_pred, eye_ctrl_labels, padding_mask)
             loss += eye_wing_loss
 
+        # TODO 目前保持跟 eege 一样的模型架构，之后可以直接尝试下直接添加一个单独的 decoder 和 head；
+        pca_l1_loss = None
+        if self.training_config.pca_config.learn_pca:
+            ctrl_labels_pca = batch["ctrl_labels"]
+            if self.training_config.learn_mouth:
+                ctrl_labels_pca[..., :self.config.n_lumi_mouth_channels] = mouth_ctrl_pred
+            if self.training_config.learn_eye:
+                ctrl_labels_pca[..., self.config.n_lumi_mouth_channels:] = eye_ctrl_pred
+            
+            pca_pred = self.pca_head(ctrl_labels_pca)
+            pca_labels = batch["pca_labels"]
+            pca_l1_loss, pca_l1_record_loss, pca_l1_record_num = self.l1_loss_fn(pca_pred, pca_labels, mask=padding_mask)
+            loss += pca_l1_loss
+
 
         return {
             "loss": loss,
             "mouth_wing_loss_record": (mouth_wing_record_loss, mouth_wing_record_num) if mouth_wing_loss else None,
             "mouth_l1_loss_record": (mouth_l1_record_loss, mouth_l1_record_num) if mouth_l1_loss else None,
-            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_num) if self.training_config.learn_eye else None
+            "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_num) if self.training_config.learn_eye else None,
+
+            "pca_l1_loss_record": (pca_l1_record_loss, pca_l1_record_num) if pca_l1_loss else None
         }
         
 

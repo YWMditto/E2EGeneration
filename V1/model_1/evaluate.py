@@ -21,7 +21,9 @@ from data_prepare import (
     norm_decode,
     PhnDataset,
     CombinedFeatureDataset,
-    static_feature_phn_post_proces_fn
+    static_feature_phn_post_proces_fn,
+    NewFeatureDataset,
+    check_feature_length_post_process_fn
 )
 
 from train import (
@@ -86,10 +88,20 @@ def evaluate():
 
     names_list = evaluate_static_feature_dataset.names
 
+    evaluate_phn_dataset = None
     phn_embedding_config = training_config.phn_embedding_config
     if phn_embedding_config.add_phn:
         evaluate_phn_dataset = PhnDataset(name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path, phn_dir=phn_embedding_config.phn_dir)
-        evaluate_static_feature_dataset = CombinedFeatureDataset(evaluate_static_feature_dataset, evaluate_phn_dataset, post_process_fn=static_feature_phn_post_proces_fn)
+    evaluate_pca_dataset = None
+    pca_config = training_config.pca_config
+    if pca_config.learn_pca:
+        evaluate_pca_dataset = NewFeatureDataset(name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path, feature_dir=pca_config.pca_label_dir, feature_name="pca_label")
+    evaluate_emotion_dataset = None
+    emotion_config = training_config.emotion_config
+    if emotion_config.add_emotion_embedding:
+        evaluate_emotion_dataset = NewFeatureDataset(name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_index")
+    evaluate_static_feature_dataset = CombinedFeatureDataset(evaluate_static_feature_dataset, evaluate_phn_dataset, evaluate_pca_dataset, evaluate_emotion_dataset, post_process_fn=check_feature_length_post_process_fn)
+
 
     save_dir = Path(args.save_dir).joinpath(Path(args.pl_ckpt_path).stem)
     save_dir.mkdir(exist_ok=True, parents=True)
@@ -159,6 +171,10 @@ def evaluate():
                         "collated_frame_length_lists": frame_length_list,
                         "phn_padding_mask": padding_mask
                     }
+
+                if emotion_config.add_emotion_embedding:
+                    emotion_index = sample["emotion_index"]
+                    collated_batch["emotion_indices"] = torch.LongTensor([emotion_index]).to(device)
 
                 output_dict = model.inference_step(collated_batch)
                 mouth_ctrl_pred = output_dict["mouth_ctrl_pred"]
