@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+import torch
 import torch.nn as nn
 
 from .modules import EEGTransformer, PhnModel
@@ -10,6 +11,8 @@ from losses import WingLoss, L1Loss
 
 from helper_fns import _init_weights
 
+
+from emotion_training import load_emotion_classifier_ckpt
 
 
 
@@ -165,6 +168,19 @@ class Model1(nn.Module):
          # 注意如果之后开始使用预训练模型，那么需要注意随机初始化的位置；
         self.apply(_init_weights)
 
+
+        # 加载 emotion classifier 需要在 apply 之后；
+        if emotion_config.learn_emotion:
+            self.emotion_classifier = load_emotion_classifier_ckpt(emotion_config.emotion_classifier_config_path, emotion_config.emotion_classifier_ckpt_path)
+            for p in self.emotion_classifier.parameters():
+                p.requires_grad = False
+            if emotion_config.emotion_classify_loss_type == "BCELoss":
+                self.emotion_classify_loss_fn = nn.BCELoss()
+            elif emotion_config.emotion_classify_loss_type == "CrossEntropyLoss":
+                self.emotion_classify_loss_fn = nn.CrossEntropyLoss()
+            else:
+                raise RuntimeError
+
         self.loss_config = training_config.loss_config
         self.wing_loss_config = self.loss_config.wing_loss_config
         self.wing_loss_fn = WingLoss(omega=self.wing_loss_config.omega, epsilon=self.wing_loss_config.epsilon, emoji_weight=self.wing_loss_config.emoji_weight)
@@ -286,8 +302,9 @@ class Model1(nn.Module):
 
         # TODO 目前保持跟 eege 一样的模型架构，之后可以直接尝试下直接添加一个单独的 decoder 和 head；
         pca_l1_loss = None
+        ctrl_labels_pca = None
         if self.training_config.pca_config.learn_pca:
-            ctrl_labels_pca = batch["ctrl_labels"]
+            ctrl_labels_pca = batch["ctrl_labels"].clone()
             if self.training_config.learn_mouth:
                 ctrl_labels_pca[..., :self.config.n_lumi_mouth_channels] = mouth_ctrl_pred
             if self.training_config.learn_eye:
@@ -298,6 +315,52 @@ class Model1(nn.Module):
             pca_l1_loss, pca_l1_record_loss, pca_l1_record_num = self.l1_loss_fn(pca_pred, pca_labels, mask=padding_mask)
             loss += pca_l1_loss
 
+        emotion_classify_loss = None
+        if self.training_config.emotion_config.learn_emotion:
+            if ctrl_labels_pca is None:
+                ctrl_labels_pca = batch["ctrl_labels"].clone()
+                if self.training_config.learn_mouth:
+                    ctrl_labels_pca[..., :self.config.n_lumi_mouth_channels] = mouth_ctrl_pred
+                if self.training_config.learn_eye:
+                    ctrl_labels_pca[..., self.config.n_lumi_mouth_channels:] = eye_ctrl_pred
+            
+            emotion_preds = self.emotion_classifier.forward_for_disstill(ctrl_labels_pca)
+            with torch.no_grad():
+                emotion_targets = self.emotion_classifier.forward_for_disstill(batch["ctrl_labels"])
+            
+
+            # 
+            with torch.no_grad():
+                _, _logits = torch.max(emotion_targets, dim=-1)
+                emotion_indices = batch["emotion_indices"]
+                _right_num = torch.sum(_logits == emotion_indices).item()
+                _total_num = len(emotion_indices)
+                print(f"emotion classify target acc: {_right_num / _total_num}")
+
+                _, _logits = torch.max(emotion_preds, dim=-1)
+                # emotion_indices = batch["emotion_indices"]
+                _right_num = torch.sum(_logits == emotion_indices).item()
+                _total_num = len(emotion_indices)
+                print(f"emotion classify pred acc: {_right_num / _total_num}")
+
+            #
+
+
+            # 去除 pad；
+            emotion_preds = emotion_preds[..., 1:]
+            emotion_targets = emotion_targets[..., 1:]
+            if self.training_config.emotion_config.emotion_classify_loss_type == "BCELoss":
+                emotion_preds = torch.nn.functional.softmax(emotion_preds, dim=-1)
+                emotion_targets = torch.nn.functional.softmax(emotion_targets, dim=-1)
+                emotion_classify_loss = self.emotion_classify_loss_fn(emotion_preds, emotion_targets)
+            elif self.training_config.emotion_config.emotion_classify_loss_type == "CrossEntropyLoss":
+                emotion_targets = torch.nn.functional.softmax(emotion_targets, dim=-1)
+                emotion_classify_loss = self.emotion_classify_loss_fn(emotion_preds, emotion_targets)
+            else:
+                raise RuntimeError
+
+            loss += self.training_config.emotion_config.emotion_classify_loss_weight * emotion_classify_loss
+
 
         return {
             "loss": loss,
@@ -305,7 +368,8 @@ class Model1(nn.Module):
             "mouth_l1_loss_record": (mouth_l1_record_loss, mouth_l1_record_num) if mouth_l1_loss else None,
             "eye_wing_loss_record": (eye_wing_record_loss, eye_wing_record_num) if self.training_config.learn_eye else None,
 
-            "pca_l1_loss_record": (pca_l1_record_loss, pca_l1_record_num) if pca_l1_loss else None
+            "pca_l1_loss_record": (pca_l1_record_loss, pca_l1_record_num) if pca_l1_loss else None,
+            "emotion_classify_loss": emotion_classify_loss.item() if emotion_classify_loss is not None else None
         }
         
 

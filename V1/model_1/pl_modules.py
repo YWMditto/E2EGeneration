@@ -70,7 +70,7 @@ class Model1PL(pl.LightningModule):
 
     # 使用 normalized_extracted_ctrl_labels 的数据；
     def training_step(self, batch, batch_idx):
-        collated_ctrl_labels = batch["ctrl_labels"]
+        collated_ctrl_labels = batch["ctrl_labels"].clone()
         mouth_ctrl_labels = collated_ctrl_labels[..., :self.lumi05_mouth_ctrl_indices_num]
         eye_ctrl_labels = collated_ctrl_labels[..., self.lumi05_mouth_ctrl_indices_num:]
         batch["mouth_ctrl_labels"] = mouth_ctrl_labels
@@ -80,7 +80,6 @@ class Model1PL(pl.LightningModule):
         
         loss_dict.pop("loss")
         loss_dict["global_step"] = float(self.global_step)
-
 
         mouth_wing_loss_record = loss_dict.pop("mouth_wing_loss_record")
         if mouth_wing_loss_record is not None:
@@ -97,7 +96,11 @@ class Model1PL(pl.LightningModule):
         pca_l1_loss_record = loss_dict.pop("pca_l1_loss_record")
         if pca_l1_loss_record is not None:
             loss_dict["pca_l1_loss"] = pca_l1_loss_record[0] / pca_l1_loss_record[1]
-        
+
+        for key in list(loss_dict.keys()):
+            if loss_dict[key] is None:
+                loss_dict.pop(key)
+
         if self.use_wandb:
             loss_dict["loss"] = loss.item()
             wandb.log(loss_dict)
@@ -158,11 +161,13 @@ class Model1PL(pl.LightningModule):
         eye_wing_loss_record = loss_dict["eye_wing_loss_record"]
 
         pca_l1_loss_record = loss_dict["pca_l1_loss_record"]
-        return [mouth_wing_loss_record, eye_wing_loss_record, mouth_l1_loss_record, pca_l1_loss_record]
+
+        emotion_classify_loss = loss_dict["emotion_classify_loss"]
+        return [mouth_wing_loss_record, eye_wing_loss_record, mouth_l1_loss_record, pca_l1_loss_record, emotion_classify_loss]
     
     def validation_epoch_end(self, outputs) -> None:
         
-        mouth_wing_loss_records, eye_wing_loss_records, mouth_l1_loss_records, pca_l1_loss_records = list(zip(*outputs))
+        mouth_wing_loss_records, eye_wing_loss_records, mouth_l1_loss_records, pca_l1_loss_records, emotion_classify_losses = list(zip(*outputs))
 
         logger_info = ""
         loss_dict = {}
@@ -193,6 +198,12 @@ class Model1PL(pl.LightningModule):
             validate_loss += pca_l1_validate_loss
             logger_info += f"\tpca_l1_validate_loss: {pca_l1_validate_loss}"
 
+        if emotion_classify_losses[0] is not None:
+            emotion_classify_loss = sum(emotion_classify_losses) / len(emotion_classify_losses)
+            loss_dict["emotion_classify_validate_loss"] = emotion_classify_loss
+            validate_loss += emotion_classify_loss
+            logger_info += f"\temotion_classify_loss: {emotion_classify_loss}"
+
         logger_info = f"validate: validate_loss: {validate_loss}" + logger_info 
         loss_dict["validate_loss"] = validate_loss
         if self.use_wandb:
@@ -216,13 +227,6 @@ class Model1PL(pl.LightningModule):
                 last_epoch=self.current_epoch-1  # TODO 断点重训的行为需要测试； 
             )
         ]
-        # warmup_scheduler = torch.optim.lr_scheduler.LambdaLR(
-        #     optimizer=optimizer,
-        #     lr_lambda=lambda epoch: max(epoch / self.training_config.warmup_epochs, self.training_config.min_lr) ,
-        #     last_epoch=self.current_epoch-1
-        # )
-        # lr_scheduler.append(warmup_scheduler)
-
         return [optimizer], lr_scheduler
 
 

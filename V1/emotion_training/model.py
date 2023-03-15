@@ -70,9 +70,9 @@ class EmotionClassifier(nn.Module):
 
     def forward(self, batch):
         collated_ctrl_labels = batch["collated_ctrl_labels"]
-        collated_ctrl_labels = collated_ctrl_labels.unsqueeze(1).permute(0, 1, 3, 2)
+        collated_ctrl_labels = collated_ctrl_labels.unsqueeze(1).permute(0, 1, 3, 2)  # [B, 1, 66, N]
 
-        hidden_state = self.conv(collated_ctrl_labels)  # [B, 1, 66, N']
+        hidden_state = self.conv(collated_ctrl_labels)  
 
         N, C, H, W = hidden_state.shape
         hidden_state = hidden_state.view(N, C*H, W)  # [B, 128*2, N']
@@ -107,7 +107,15 @@ class EmotionClassifier(nn.Module):
         logits = nn.functional.softmax(logits, dim=-1)
         _, preds = torch.max(logits, dim=-1)
         return {"loss": loss, "preds": preds}
+    
 
+    def forward_for_disstill(self, x):
+        hidden_state = self({"collated_ctrl_labels": x})
+        logits = self.projection_head(hidden_state)  # [B, 18]
+        # # 先默认不加 logits；
+        # logits = logits / self.model_config.temp
+        # logits = nn.functional.softmax(logits, dim=-1)
+        return logits
 
 
 

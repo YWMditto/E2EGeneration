@@ -18,7 +18,7 @@ TrainingConfig:
   check_val_every_n_epoch: 1 
   val_check_interval: 
   checkpoint_config:
-    save_checkpoint: False
+    save_checkpoint: True
     checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/emotion_training/checkpoint_dir/v1"
     checkpoint_sub_name: "{epoch}-{step}-{validate_acc:.4f}"
     monitor: "validate_acc"

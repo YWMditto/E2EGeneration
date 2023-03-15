@@ -114,6 +114,14 @@ class EmotionConfig:
     emotion_num: int = 18  #  17 + pad(0)
     emotion_feature_dir: Optional[str] = None
 
+    # emotion prediction task;
+    learn_emotion: bool = False
+    emotion_classify_loss_type: str = "BCELoss"
+    emotion_classify_loss_weight: float = 0.1
+    emotion_classifier_config_path: Optional[str] = None
+    emotion_classifier_ckpt_path: Optional[str] = None
+
+
 
 
 

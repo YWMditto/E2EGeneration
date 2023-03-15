@@ -15,17 +15,16 @@ UsedDatasetConfig:
     min_keep_feature_size:
 
 TrainingConfig:
-  # weight_decay: 0.
   gradient_clip_val:
   n_epochs: 1000
-  devices: [3]
+  devices: [7]
   epoch_milestones: [200, 500]
   warmup_epochs: 20
   check_val_every_n_epoch: 
   val_check_interval: 750
   checkpoint_config:
-    save_checkpoint: True
-    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/hubert_layer6/all_v1"
+    save_checkpoint: False
+    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_1/hubert_layer6/emotion_classify/all_v2"
     checkpoint_sub_name: "{epoch}-{step}-{mouth_l1_validate_loss:.4f}"
     monitor: "mouth_l1_validate_loss"
     save_last: True
@@ -47,9 +46,13 @@ TrainingConfig:
     pca_label_dir: /data/lipsync/xgyang/e2e_data/yingrao/dataproc/crop_pca
     n_pca_channels: 134
   emotion_config:
-    add_emotion_embedding: False
+    add_emotion_embedding: True
     emotion_num: 18
     emotion_feature_dir: /data/lipsync/xgyang/e2e_data/emotions
+    learn_emotion: True
+    emotion_classify_loss_weight: 0.1
+    emotion_classifier_config_path: /data/lipsync/xgyang/E2EGeneration/V1/emotion_training/config/v1.yaml
+    emotion_classifier_ckpt_path: /data/lipsync/xgyang/E2EGeneration/V1/emotion_training/checkpoint_dir/v1/epoch=15-step=12768-validate_acc=1.0000.ckpt
 
     
 Model1Config:

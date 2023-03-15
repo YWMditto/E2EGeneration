@@ -86,8 +86,8 @@ if __name__ == "__main__":
     # )
 
     transform_pt2npy_dir(
-        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/hubert/layer6/all_emotion_v1/epoch=24-step=11250-mouth_l1_validate_loss=0.0885",
-        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_1/hubert/layer6/all_emotion_v1/epoch=24-step=11250-mouth_l1_validate_loss=0.0885_npy"
+        path_dir_or_list="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_2/ser_hubert/all_v1_large/epoch=35-step=113600-validate_loss=0.0696",
+        save_path="/data/lipsync/xgyang/E2EGeneration/V1/tmp_dir/evaluate_generation/model_2/ser_hubert/all_v1_large/epoch=35-step=113600-validate_loss=0.0696_npy"
     )
 
 
