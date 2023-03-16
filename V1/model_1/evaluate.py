@@ -99,7 +99,7 @@ def evaluate():
     evaluate_emotion_dataset = None
     emotion_config = training_config.emotion_config
     if emotion_config.add_emotion_embedding:
-        evaluate_emotion_dataset = NewFeatureDataset(name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_index")
+        evaluate_emotion_dataset = NewFeatureDataset(name_manifest_path=evaluate_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_id")
     evaluate_static_feature_dataset = CombinedFeatureDataset(evaluate_static_feature_dataset, evaluate_phn_dataset, evaluate_pca_dataset, evaluate_emotion_dataset, post_process_fn=check_feature_length_post_process_fn)
 
 
@@ -173,8 +173,8 @@ def evaluate():
                     }
 
                 if emotion_config.add_emotion_embedding:
-                    emotion_index = sample["emotion_index"]
-                    collated_batch["emotion_indices"] = torch.LongTensor([emotion_index]).to(device)
+                    emotion_id = sample["emotion_id"]
+                    collated_batch["emotion_indices"] = torch.LongTensor([emotion_id]).to(device)
 
                 output_dict = model.inference_step(collated_batch)
                 mouth_ctrl_pred = output_dict["mouth_ctrl_pred"]

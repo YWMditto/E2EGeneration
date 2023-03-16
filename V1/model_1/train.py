@@ -123,8 +123,6 @@ class EmotionConfig:
 
 
 
-
-
 @dataclass
 class TrainingConfig:
     
@@ -175,8 +173,7 @@ class TrainingConfig:
     pca_config: PcaConfig = PcaConfig()
     emotion_config: EmotionConfig = EmotionConfig()
 
-    def __post_init__(self):
-        assert self.warmup_epochs is None or self.warmup_steps is None
+    
 
 
 @dataclass
@@ -224,7 +221,7 @@ def train():
     train_emotion_dataset = None
     emotion_config = training_config.emotion_config
     if emotion_config.add_emotion_embedding:
-        train_emotion_dataset = NewFeatureDataset(name_manifest_path=train_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_index")
+        train_emotion_dataset = NewFeatureDataset(name_manifest_path=train_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_id")
 
     train_static_feature_dataset = CombinedFeatureDataset(train_static_feature_dataset, train_phn_dataset, train_pca_dataset, train_emotion_dataset, post_process_fn=check_feature_length_post_process_fn)
 
@@ -256,7 +253,7 @@ def train():
         validate_pca_dataset = NewFeatureDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, feature_dir=pca_config.pca_label_dir, feature_name="pca_label")
     validate_emotion_dataset = None
     if emotion_config.add_emotion_embedding:
-        validate_emotion_dataset = NewFeatureDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_index")
+        validate_emotion_dataset = NewFeatureDataset(name_manifest_path=validate_static_feature_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_id")
     
     validate_static_feature_dataset = CombinedFeatureDataset(validate_static_feature_dataset, validate_phn_dataset, validate_pca_dataset, validate_emotion_dataset, post_process_fn=check_feature_length_post_process_fn)
     validate_dataloader = DataLoader(dataset=validate_static_feature_dataset, batch_size=training_config.batch_size, shuffle=False, collate_fn=train_collate_fn, num_workers=training_config.num_workers)

@@ -1,0 +1,67 @@
+
+
+
+UsedDatasetConfig:
+  train_dataset_config: 
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_train.txt
+    audio_dir: /data/lipsync/xgyang/e2e_data/aligned_audios
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    max_keep_sample_size:
+    min_keep_sample_size:
+    normalize: False   # hubert-large 应当为 True；base 应当为 False；
+  validate_dataset_config:
+    name_manifest_path: /data/lipsync/xgyang/E2EGeneration/V1/cache_dir/hubert/all/data_validate.txt
+    audio_dir: /data/lipsync/xgyang/e2e_data/aligned_audios
+    ctrl_label_dir: /data/lipsync/xgyang/e2e_data/normalized_extracted_ctrl_labels
+    max_keep_sample_size:
+    min_keep_sample_size:
+    normalize: False  # hubert-large 应当为 True，base 应当为 False；
+
+TrainingConfig:
+  # weight_decay: 0.
+  gradient_clip_val:
+  n_epochs: 100
+  devices: [2]
+  warmup_epochs: 8
+  lr_T_0: 8
+  lr_T_mult: 3
+  lr_eta_min: 0.000001
+  base_lr: 0.0001
+  check_val_every_n_epoch: 
+  val_check_interval: 400
+  checkpoint_config:
+    save_checkpoint: True
+    checkpoint_dir: "/data/lipsync/xgyang/E2EGeneration/V1/checkpoint_dir/model_2/hubert/all_dcm_base_v1"
+    checkpoint_sub_name: "{epoch}-{step}-{validate_loss:.4f}"
+    monitor: "validate_loss"
+    save_last: True
+    save_top_k: 2
+    save_weights_only: False
+    mode: "min"
+    every_n_epochs: 1
+    every_n_train_steps: 
+    save_on_train_epoch_end: False
+  loss_config:
+    use_wing_loss: False
+    use_l1_loss: True
+    wing_loss_weight: 1.
+    l1_loss_weight: 1.
+    wing_loss_config:
+      omega: 10.
+      epsilon: 2.0
+      emoji_weight: 1.0
+  emotion_config:
+    add_emotion_embedding: False
+    emotion_num: 18  #  17 + pad(0)
+    emotion_layer: 6
+    emotion_feature_dir: /data/lipsync/xgyang/e2e_data/emotions
+  casual_mask_config:
+    add_double_casual_mask: True
+    dcm_ratios: [0., 0., 0., 0.1, 0.15, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.9]
+
+Model2Config:
+  pretrained_model_or_path: "TencentGameMate/chinese-hubert-base"
+
+
+
+

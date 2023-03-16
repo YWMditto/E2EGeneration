@@ -31,6 +31,7 @@ from data_prepare import (
     ConstantTokenBatchSampler,
     PhnDataset,
     CombinedFeatureDataset,
+    NewFeatureDataset
 )
 
 from model_2 import (
@@ -43,13 +44,17 @@ from losses import LossConfig
 from helper_fns import parse_config_from_yaml
 
 
+
+
+
+
+
 # TODO 支持多个 checkpoint 的 config；
 @dataclass
 class CheckpointConfig:
     save_checkpoint: bool = False
     checkpoint_dir: Optional[str] = None
     checkpoint_sub_name: Optional[str] = None
-
 
     monitor: Optional[str] = None
     save_last: bool = True
@@ -59,6 +64,54 @@ class CheckpointConfig:
     every_n_epochs: Optional[int] = 1
     every_n_train_steps: Optional[int] = None
     save_on_train_epoch_end: Optional[bool] = False
+
+
+@dataclass
+class PhnConfig:
+    add_phn_embedding: bool = False
+    phn_num: Optional[int] = 63
+    phn_layer: Optional[int] = None 
+
+    phn_feature_dir: Optional[str] = None
+    phn_padding_idx: Optional[int] = 0
+    phn_directly_pad: bool = True
+    phn_flatten_pad: bool = True
+    
+
+
+# 和 phn embedding config 一样；
+@dataclass
+class PcaConfig:
+    """
+    根据输出的标签控制器的值来预测 pca 值；
+
+    这里需要有一个特殊处理的地方在于，如果没有学 mouth 或者 eye，那么对应部分需要使用 golden label 来进行替换；
+    
+    """
+
+    learn_pca: bool = False
+    pca_label_dir: Optional[str] = None
+    n_pca_channels: int = 134
+
+
+@dataclass
+class EmotionConfig:
+    """
+    该 config 包含 emotion embedding config 和 emotion prediction task config；
+    
+    """
+
+    add_emotion_embedding: bool = False
+    emotion_num: int = 18  #  17 + pad(0)
+    emotion_layer: Optional[int] = None
+
+    emotion_feature_dir: Optional[str] = None
+
+
+@dataclass
+class CasualMaskConfig:
+    add_double_casual_mask: Optional[bool] = False
+    dcm_ratios: Optional[List] = None  # List[float]
 
 
 @dataclass
@@ -108,6 +161,13 @@ class TrainingConfig:
     loss_config: LossConfig = LossConfig()
     checkpoint_config: CheckpointConfig = CheckpointConfig()
 
+    phn_config: PhnConfig = PhnConfig()
+    pca_config: PcaConfig = PcaConfig()
+    emotion_config: EmotionConfig = EmotionConfig()
+    casual_mask_config: CasualMaskConfig = CasualMaskConfig()
+
+    def __post_init__(self):
+        assert self.warmup_epochs is None or self.warmup_steps is None
 
 
 
@@ -142,13 +202,33 @@ def train():
         max_keep_sample_size=train_raw_audio_dataset_config.max_keep_sample_size,
         min_keep_sample_size=train_raw_audio_dataset_config.min_keep_sample_size
     )
+
+    train_phn_dataset = None
+    phn_config = training_config.phn_config
+    if phn_config.add_phn_embedding:
+        train_phn_dataset = PhnDataset(name_manifest_path=train_raw_audio_dataset_config.name_manifest_path, phn_dir=phn_config.phn_feature_dir)
+    train_pca_dataset = None
+    pca_config = training_config.pca_config
+    if pca_config.learn_pca:
+        train_pca_dataset = NewFeatureDataset(name_manifest_path=train_raw_audio_dataset_config.name_manifest_path, feature_dir=pca_config.pca_label_dir, feature_name="pca_label")
+    train_emotion_dataset = None
+    emotion_config = training_config.emotion_config
+    if emotion_config.add_emotion_embedding:
+        train_emotion_dataset = NewFeatureDataset(name_manifest_path=train_raw_audio_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_id")
     
+    train_raw_audio_dataset = CombinedFeatureDataset(train_raw_audio_dataset, train_phn_dataset, train_pca_dataset, train_emotion_dataset, post_process_fn=None)
+
     train_collate_fn = RawAudioCollater(
         max_sample_size=train_raw_audio_dataset_config.max_sample_size,
         pad_audio=train_raw_audio_dataset_config.pad_audio,
         random_crop=train_raw_audio_dataset_config.random_crop,
+        
         sample_rate=train_raw_audio_dataset_config.sample_rate,
-        label_rate=train_raw_audio_dataset_config.label_rate
+        label_rate=train_raw_audio_dataset_config.label_rate,
+
+        phn_directly_pad=phn_config.phn_directly_pad,
+        phn_flatten_pad=phn_config.phn_flatten_pad,
+        phn_padding_idx=phn_config.phn_padding_idx
     )
 
     if training_config.use_constant_batch_sampler:
@@ -175,6 +255,17 @@ def train():
         max_keep_sample_size=validate_raw_audio_dataset_config.max_keep_sample_size,
         min_keep_sample_size=validate_raw_audio_dataset_config.min_keep_sample_size
     )
+    validate_phn_dataset = None
+    if phn_config.add_phn_embedding:
+        validate_phn_dataset = PhnDataset(name_manifest_path=validate_raw_audio_dataset_config.name_manifest_path, phn_dir=phn_config.phn_feature_dir)
+    validate_pca_dataset = None
+    if pca_config.learn_pca:
+        validate_pca_dataset = NewFeatureDataset(name_manifest_path=validate_raw_audio_dataset_config.name_manifest_path, feature_dir=pca_config.pca_label_dir, feature_name="pca_label")
+    validate_emotion_dataset = None
+    if emotion_config.add_emotion_embedding:
+        validate_emotion_dataset = NewFeatureDataset(name_manifest_path=validate_raw_audio_dataset_config.name_manifest_path, feature_dir=emotion_config.emotion_feature_dir, feature_name="emotion_id")
+    
+    validate_raw_audio_dataset = CombinedFeatureDataset(validate_raw_audio_dataset, validate_phn_dataset, validate_pca_dataset, validate_emotion_dataset, post_process_fn=None)
     
     validate_dataloader = DataLoader(dataset=validate_raw_audio_dataset, batch_size=training_config.batch_size, shuffle=False, collate_fn=train_collate_fn, num_workers=training_config.num_workers)
 
@@ -205,6 +296,7 @@ def train():
 
     trainer = pl.Trainer(
         accelerator="gpu",
+        strategy="ddp" if len(training_config.devices) > 1 else None,
         devices=training_config.devices,
         max_epochs=training_config.n_epochs,
         callbacks=callbacks,

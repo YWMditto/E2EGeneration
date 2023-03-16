@@ -10,6 +10,7 @@ import torch
 import torch.nn as nn
 
 import numpy as np
+from functools import lru_cache
 
 
 logger = logging.getLogger(__file__)
@@ -95,7 +96,7 @@ def _init_weights(module):
 
 
 
-def align_length_with_directly_insert(data, tgt_length):
+def align_length_with_directly_insert(data, tgt_length, positoin_embedding=None):
 
     length = len(data)
     if length == tgt_length:
@@ -115,10 +116,70 @@ def align_length_with_directly_insert(data, tgt_length):
 
     for i in range(insert_num):
         new_data[i*gap_num+i:(i+1)*gap_num+i] = data[i*gap_num:(i+1)*gap_num]
-        new_data[(i+1)*gap_num+i] = new_data[max((i+1)*gap_num+i - 1, 0)]
+        if positoin_embedding is None:
+            new_data[(i+1)*gap_num+i] = new_data[max((i+1)*gap_num+i - 1, 0)]
+        else:
+            new_data[(i+1)*gap_num+i] = new_data[max((i+1)*gap_num+i - 1, 0)] + positoin_embedding
 
     new_data[(i+1)*gap_num+i+1:] = data[(i+1)*gap_num:]
     return new_data
+
+
+
+
+
+# @lru_cache(maxsize=1000)
+def _compute_zero_indices(k, device):
+    ul = torch.zeros(size=(k*(k+1)//2, 2)).long().to(device)
+    ll = torch.zeros(size=(k*(k+1)//2, 2)).long().to(device)
+    idx = 0
+    for i in range(k):
+        for j in range(k-i):
+            ul[idx] = torch.LongTensor((i, -1-j))
+            ll[idx] = torch.LongTensor((-1-i, j))
+            idx += 1
+    return ul, ll
+
+
+# @lru_cache(maxsize=100000)
+def generate_double_casual_mask(n, k, device):
+    assert 0 <= k < n
+
+    mask = torch.ones(size=(n, n)).to(device)
+    if k == 0:
+        return mask
+    
+    ul, ll = _compute_zero_indices(k, device)
+    ul[:, 1] += n
+    ll[:, 0] += n
+
+    all_l = torch.cat([ul, ll])
+    mask[all_l[:, 0], all_l[:, 1]] = 0
+
+    return mask
+
+
+def generate_double_casual_mask_batches(seq_len, r):
+    device = torch.device("cpu")
+    if isinstance(seq_len, torch.Tensor):
+        device = seq_len.device
+
+    if isinstance(r, float) or r == 0:
+        assert 0 <= r < 1
+        r = [int(l * r) for l in seq_len]
+    else:
+        assert len(r) == len(seq_len)
+    
+    ml = max(seq_len)
+    collated_masks = torch.ones(size=(len(seq_len), ml, ml)).to(device)#.bool()
+
+    for i in range(len(seq_len)):
+        cl = seq_len[i]
+        cml = r[i]
+        cm = generate_double_casual_mask(cl, cml, device)
+        collated_masks[i, :cl, :cl] = cm
+
+    return collated_masks
 
 
 if __name__ == '__main__':
@@ -126,10 +187,11 @@ if __name__ == '__main__':
 
 
 
-    with open("/remote-home/xgyang/E2EGeneration/V1/config/v1.yaml", 'r') as f:
-        config = yaml.load(f, Loader=yaml.FullLoader)
+    # with open("/remote-home/xgyang/E2EGeneration/V1/config/v1.yaml", 'r') as f:
+    #     config = yaml.load(f, Loader=yaml.FullLoader)
 
 
+    mask = generate_double_casual_mask(10, 4)
     a = 1
 
 

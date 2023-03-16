@@ -593,7 +593,9 @@ class CombinedFeatureDataset(Dataset):
         for i in range(len(self.datasets)):
             cur_sample = self.datasets[i][index]
             sample.update(cur_sample)
-        sample = self.post_process_fn(sample)
+        
+        if self.post_process_fn is not None:
+            sample = self.post_process_fn(sample)
         return sample
 
 
@@ -1000,6 +1002,7 @@ def pad_phn_fn(
         # directly_pad 为 True 时，因为保证是没有截断，因此 faeture size 就是当前batch中的 flatten 后最长的 sample 的长度；
         if flatten_pad:
             collated_phns = torch.zeros((len(phn_dict_list), feature_size)).long().fill_(phn_padding_idx)
+            phn_lengths = torch.zeros(len(phn_dict_list)).long()
             for i in range(len(phn_dict_list)):
                 phn_dict = phn_dict_list[i]
                 phn_list = torch.LongTensor(phn_dict["phn_list"])
@@ -1007,6 +1010,7 @@ def pad_phn_fn(
                 total_length = phn_dict["total_length"]
                 flatten_phns = torch.repeat_interleave(phn_list, frame_length_list)
                 collated_phns[i][:total_length] = flatten_phns
+                phn_lengths[i] = total_length
             # 因为这里需要的其他东西在前面已经得到了，例如 padding mask 等，因此这里直接返回 collated_phns；
         else:
             max_phn_list_length = max(len(w["phn_list"]) for w in phn_dict_list)
@@ -1024,6 +1028,7 @@ def pad_phn_fn(
             
     return {
         "collated_phns": collated_phns,  # flatten
+        "phn_lengths": phn_lengths,
         "collated_phn_lists": collated_phn_lists,
         "collated_frame_length_lists": collated_frame_length_lists,
         "phn_padding_mask": padding_mask
@@ -1102,7 +1107,11 @@ class RawAudioCollater:
         random_crop: bool,
 
         sample_rate: Optional[int] = None,
-        label_rate: Optional[int] = None
+        label_rate: Optional[int] = None,
+
+        phn_directly_pad: bool = True,
+        phn_flatten_pad: bool = True,
+        phn_padding_idx: int = 0,
     ):
         if max_sample_size is None:
             max_sample_size = sys.maxsize
@@ -1113,12 +1122,20 @@ class RawAudioCollater:
 
         self.s2f = label_rate / sample_rate
 
+        self.phn_directly_pad = phn_directly_pad
+        self.phn_flatten_pad = phn_flatten_pad
+        self.phn_padding_idx = phn_padding_idx
+
         logger.info(f"RawAudioCollater is configured as: \n"
                     f"\tmax_feature_size: {max_sample_size},"
                     f"\tpad_feature: {pad_audio},"
                     f"\trandom_crop: {random_crop},"
-                    f"\label_rate: {label_rate},"
-                    f"\sample_rate: {sample_rate},")
+                    f"\tlabel_rate: {label_rate},"
+                    f"\tsample_rate: {sample_rate},"
+
+                    f"\tphn_directly_pad: {phn_directly_pad},"
+                    f"\tphn_directly_pad: {phn_directly_pad},"
+                    f"\tphn_padding_idx: {phn_padding_idx},")
 
 
     def __call__(self, batch):
@@ -1170,6 +1187,35 @@ class RawAudioCollater:
             "label_ntokens": ntokens,
             "ctrl_labels": collated_ctrl_labels
         }
+
+        # pad phn；
+        # TODO 目前 phn 这里的设置是和 StaticFeatureCollater 保持一致的，之后可能会进行定制化的修改；
+        if "phn_dict" in sample_list[0]:
+            phn_dict_list = [s["phn_dict"] for s in sample_list]
+            padded_phn_dict = pad_phn_fn(
+                phn_dict_list=phn_dict_list,
+                feature_size=feature_size,
+                directly_pad=self.phn_directly_pad,
+                flatten_pad=self.phn_flatten_pad,
+                phn_padding_idx=self.phn_padding_idx,
+                feature_start_list=feature_start_list
+            )
+            collated_batch["phn_dict"] = padded_phn_dict
+
+        # pad pca, this should be exactly  same as ctrl labels;
+        if "pca_label" in sample_list[0]:
+            pca_label_list = [s["pca_label"] for s in sample_list]
+            collated_pca_labels, _, _ = directly_pad_feature_fn(
+                feature_list=pca_label_list,
+                feature_size=feature_size,
+                feature_start_list=feature_start_list
+            )
+            collated_batch["pca_labels"] = collated_pca_labels
+
+        if "emotion_id" in sample_list[0]:
+            emotion_indices = [s["emotion_id"] for s in sample_list]
+            emotion_indices = torch.LongTensor(emotion_indices)
+            collated_batch["emotion_ids"] = emotion_indices
 
         return collated_batch
 
@@ -1359,8 +1405,8 @@ class StaticFeatureCollater:
             )
             collated_batch["pca_labels"] = collated_pca_labels
 
-        if "emotion_index" in sample_list[0]:
-            emotion_indices = [s["emotion_index"] for s in sample_list]
+        if "emotion_id" in sample_list[0]:
+            emotion_indices = [s["emotion_id"] for s in sample_list]
             emotion_indices = torch.LongTensor(emotion_indices)
             collated_batch["emotion_indices"] = emotion_indices
 
